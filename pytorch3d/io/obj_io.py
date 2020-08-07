@@ -3,7 +3,6 @@
 
 """This module implements utility functions for loading and saving meshes."""
 import os
-import pathlib
 import warnings
 from collections import namedtuple
 from typing import Optional
@@ -12,7 +11,8 @@ import numpy as np
 import torch
 from pytorch3d.io.mtl_io import load_mtl, make_mesh_texture_atlas
 from pytorch3d.io.utils import _open_file
-from pytorch3d.structures import Meshes, Textures, join_meshes_as_batch
+from pytorch3d.renderer import TexturesAtlas, TexturesUV
+from pytorch3d.structures import Meshes, join_meshes_as_batch
 
 
 def _make_tensor(data, cols: int, dtype: torch.dtype, device="cpu") -> torch.Tensor:
@@ -42,6 +42,10 @@ def _format_faces_indices(faces_indices, max_index, device, pad_value=None):
     Args:
         faces_indices: List of ints of indices.
         max_index: Max index for the face property.
+        pad_value: if any of the face_indices are padded, specify
+            the value of the padding (e.g. -1). This is only used
+            for texture indices indices where there might
+            not be texture information for all the faces.
 
     Returns:
         faces_indices: List of ints of indices.
@@ -66,14 +70,16 @@ def _format_faces_indices(faces_indices, max_index, device, pad_value=None):
         faces_indices[mask] = pad_value
 
     # Check indices are valid.
-    if torch.any(faces_indices >= max_index) or torch.any(faces_indices < 0):
+    if torch.any(faces_indices >= max_index) or (
+        pad_value is None and torch.any(faces_indices < 0)
+    ):
         warnings.warn("Faces have invalid indices")
 
     return faces_indices
 
 
 def load_obj(
-    f_obj,
+    f,
     load_textures=True,
     create_texture_atlas: bool = False,
     texture_atlas_size: int = 4,
@@ -212,14 +218,13 @@ def load_obj(
               None.
     """
     data_dir = "./"
-    if isinstance(f_obj, (str, bytes, os.PathLike)):
+    if isinstance(f, (str, bytes, os.PathLike)):
         # pyre-fixme[6]: Expected `_PathLike[Variable[typing.AnyStr <: [str,
         #  bytes]]]` for 1st param but got `Union[_PathLike[typing.Any], bytes, str]`.
-        data_dir = os.path.dirname(f_obj)
-    f_obj, new_f = _open_file(f_obj)
-    try:
-        return _load(
-            f_obj,
+        data_dir = os.path.dirname(f)
+    with _open_file(f, "r") as f:
+        return _load_obj(
+            f,
             data_dir,
             load_textures=load_textures,
             create_texture_atlas=create_texture_atlas,
@@ -227,12 +232,16 @@ def load_obj(
             texture_wrap=texture_wrap,
             device=device,
         )
-    finally:
-        if new_f:
-            f_obj.close()
 
 
-def load_objs_as_meshes(files: list, device=None, load_textures: bool = True):
+def load_objs_as_meshes(
+    files: list,
+    device=None,
+    load_textures: bool = True,
+    create_texture_atlas: bool = False,
+    texture_atlas_size: int = 4,
+    texture_wrap: Optional[str] = "repeat",
+):
     """
     Load meshes from a list of .obj files using the load_obj function, and
     return them as a Meshes object. This only works for meshes which have a
@@ -251,18 +260,31 @@ def load_objs_as_meshes(files: list, device=None, load_textures: bool = True):
     """
     mesh_list = []
     for f_obj in files:
-        # TODO: update this function to support the two texturing options.
-        verts, faces, aux = load_obj(f_obj, load_textures=load_textures)
-        verts = verts.to(device)
+        verts, faces, aux = load_obj(
+            f_obj,
+            load_textures=load_textures,
+            create_texture_atlas=create_texture_atlas,
+            texture_atlas_size=texture_atlas_size,
+            texture_wrap=texture_wrap,
+        )
         tex = None
-        tex_maps = aux.texture_images
-        if tex_maps is not None and len(tex_maps) > 0:
-            verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
-            faces_uvs = faces.textures_idx[None, ...].to(device)  # (1, F, 3)
-            image = list(tex_maps.values())[0].to(device)[None]
-            tex = Textures(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=image)
+        if create_texture_atlas:
+            # TexturesAtlas type
+            tex = TexturesAtlas(atlas=[aux.texture_atlas])
+        else:
+            # TexturesUV type
+            tex_maps = aux.texture_images
+            if tex_maps is not None and len(tex_maps) > 0:
+                verts_uvs = aux.verts_uvs.to(device)  # (V, 2)
+                faces_uvs = faces.textures_idx.to(device)  # (F, 3)
+                image = list(tex_maps.values())[0].to(device)[None]
+                tex = TexturesUV(
+                    verts_uvs=[verts_uvs], faces_uvs=[faces_uvs], maps=image
+                )
 
-        mesh = Meshes(verts=[verts], faces=[faces.verts_idx.to(device)], textures=tex)
+        mesh = Meshes(
+            verts=[verts.to(device)], faces=[faces.verts_idx.to(device)], textures=tex
+        )
         mesh_list.append(mesh)
     if len(mesh_list) == 1:
         return mesh_list[0]
@@ -339,7 +361,7 @@ def _parse_face(
         faces_materials_idx.append(material_idx)
 
 
-def _load(
+def _load_obj(
     f_obj,
     data_dir,
     load_textures: bool = True,
@@ -373,7 +395,7 @@ def _load(
     # startswith expects each line to be a string. If the file is read in as
     # bytes then first decode to strings.
     if lines and isinstance(lines[0], bytes):
-        lines = [l.decode("utf-8") for l in lines]
+        lines = [el.decode("utf-8") for el in lines]
 
     for line in lines:
         if line.startswith("mtllib"):
@@ -524,18 +546,8 @@ def save_obj(f, verts, faces, decimal_places: Optional[int] = None):
         message = "Argument 'faces' should either be empty or of shape (num_faces, 3)."
         raise ValueError(message)
 
-    new_f = False
-    if isinstance(f, str):
-        new_f = True
-        f = open(f, "w")
-    elif isinstance(f, pathlib.Path):
-        new_f = True
-        f = f.open("w")
-    try:
+    with _open_file(f, "w") as f:
         return _save(f, verts, faces, decimal_places)
-    finally:
-        if new_f:
-            f.close()
 
 
 # TODO (nikhilar) Speed up this function.
