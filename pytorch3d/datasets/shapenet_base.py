@@ -1,20 +1,21 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
 
 import warnings
-from os import path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import torch
-from pytorch3d.io import load_objs_as_meshes
+from pytorch3d.io import load_obj
 from pytorch3d.renderer import (
+    FoVPerspectiveCameras,
     HardPhongShader,
     MeshRasterizer,
     MeshRenderer,
-    OpenGLPerspectiveCameras,
     PointLights,
     RasterizationSettings,
     TexturesVertex,
 )
+
+from .utils import collate_batched_meshes
 
 
 class ShapeNetBase(torch.utils.data.Dataset):
@@ -35,6 +36,8 @@ class ShapeNetBase(torch.utils.data.Dataset):
         self.synset_num_models = {}
         self.shapenet_dir = ""
         self.model_dir = "model.obj"
+        self.load_textures = True
+        self.texture_resolution = 4
 
     def __len__(self):
         """
@@ -74,6 +77,27 @@ class ShapeNetBase(torch.utils.data.Dataset):
         model["model_id"] = self.model_ids[idx]
         return model
 
+    def _load_mesh(self, model_path) -> Tuple:
+        verts, faces, aux = load_obj(
+            model_path,
+            create_texture_atlas=self.load_textures,
+            load_textures=self.load_textures,
+            texture_atlas_size=self.texture_resolution,
+        )
+        if self.load_textures:
+            textures = aux.texture_atlas
+            # Some meshes don't have textures. In this case
+            # create a white texture map
+            if textures is None:
+                textures = verts.new_ones(
+                    faces.verts_idx.shape[0],
+                    self.texture_resolution,
+                    self.texture_resolution,
+                    3,
+                )
+
+        return verts, faces.verts_idx, textures
+
     def render(
         self,
         model_ids: Optional[List[str]] = None,
@@ -111,12 +135,23 @@ class ShapeNetBase(torch.utils.data.Dataset):
         Returns:
             Batch of rendered images of shape (N, H, W, 3).
         """
-        paths = self._handle_render_inputs(model_ids, categories, sample_nums, idxs)
-        meshes = load_objs_as_meshes(paths, device=device, load_textures=False)
-        meshes.textures = TexturesVertex(
-            verts_features=torch.ones_like(meshes.verts_padded(), device=device)
-        )
-        cameras = kwargs.get("cameras", OpenGLPerspectiveCameras()).to(device)
+        idxs = self._handle_render_inputs(model_ids, categories, sample_nums, idxs)
+        # Use the getitem method which loads mesh + texture
+        models = [self[idx] for idx in idxs]
+        meshes = collate_batched_meshes(models)["mesh"]
+        if meshes.textures is None:
+            meshes.textures = TexturesVertex(
+                verts_features=torch.ones_like(meshes.verts_padded(), device=device)
+            )
+
+        meshes = meshes.to(device)
+        cameras = kwargs.get("cameras", FoVPerspectiveCameras()).to(device)
+        if len(cameras) != 1 and len(cameras) % len(meshes) != 0:
+            raise ValueError("Mismatch between batch dims of cameras and meshes.")
+        if len(cameras) > 1:
+            # When rendering R2N2 models, if more than one views are provided, broadcast
+            # the meshes so that each mesh can be rendered for each of the views.
+            meshes = meshes.extend(len(cameras) // len(meshes))
         renderer = MeshRenderer(
             rasterizer=MeshRasterizer(
                 cameras=cameras,
@@ -136,7 +171,7 @@ class ShapeNetBase(torch.utils.data.Dataset):
         categories: Optional[List[str]] = None,
         sample_nums: Optional[List[int]] = None,
         idxs: Optional[List[int]] = None,
-    ) -> List[str]:
+    ) -> List[int]:
         """
         Helper function for converting user provided model_ids, categories and sample_nums
         to indices of models in the loaded dataset. If model idxs are provided, we check if
@@ -206,15 +241,7 @@ class ShapeNetBase(torch.utils.data.Dataset):
                 )
                 warnings.warn(msg)
             idxs = self._sample_idxs_from_category(sample_nums[0])
-        return [
-            path.join(
-                self.shapenet_dir,
-                self.synset_ids[idx],
-                self.model_ids[idx],
-                self.model_dir,
-            )
-            for idx in idxs
-        ]
+        return idxs
 
     def _sample_idxs_from_category(
         self, sample_num: int = 1, category: Optional[str] = None

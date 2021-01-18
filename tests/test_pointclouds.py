@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
 
 
+import random
 import unittest
 
 import numpy as np
@@ -24,6 +25,7 @@ class TestPointclouds(TestCaseMixin, unittest.TestCase):
         with_normals: bool = True,
         with_features: bool = True,
         min_points: int = 0,
+        requires_grad: bool = False,
     ):
         """
         Function to generate a Pointclouds object of N meshes with
@@ -49,16 +51,31 @@ class TestPointclouds(TestCaseMixin, unittest.TestCase):
             p.fill_(p[0])
 
         points_list = [
-            torch.rand((i, 3), device=device, dtype=torch.float32) for i in p
+            torch.rand(
+                (i, 3), device=device, dtype=torch.float32, requires_grad=requires_grad
+            )
+            for i in p
         ]
         normals_list, features_list = None, None
         if with_normals:
             normals_list = [
-                torch.rand((i, 3), device=device, dtype=torch.float32) for i in p
+                torch.rand(
+                    (i, 3),
+                    device=device,
+                    dtype=torch.float32,
+                    requires_grad=requires_grad,
+                )
+                for i in p
             ]
         if with_features:
             features_list = [
-                torch.rand((i, channels), device=device, dtype=torch.float32) for i in p
+                torch.rand(
+                    (i, channels),
+                    device=device,
+                    dtype=torch.float32,
+                    requires_grad=requires_grad,
+                )
+                for i in p
             ]
 
         if lists_to_tensors:
@@ -109,6 +126,44 @@ class TestPointclouds(TestCaseMixin, unittest.TestCase):
             clouds.padded_to_packed_idx().cpu(),
             torch.tensor([0, 1, 2, 5, 6, 7, 8, 10, 11, 12, 13, 14]),
         )
+
+    def test_init_error(self):
+        # Check if correct errors are raised when verts/faces are on
+        # different devices
+
+        clouds = self.init_cloud(10, 100, 5)
+        points_list = clouds.points_list()  # all tensors on cuda:0
+        points_list = [
+            p.to("cpu") if random.uniform(0, 1) > 0.5 else p for p in points_list
+        ]
+        features_list = clouds.features_list()
+        normals_list = clouds.normals_list()
+
+        with self.assertRaises(ValueError) as cm:
+            Pointclouds(
+                points=points_list, features=features_list, normals=normals_list
+            )
+            self.assertTrue("same device" in cm.msg)
+
+        points_list = clouds.points_list()
+        features_list = [
+            f.to("cpu") if random.uniform(0, 1) > 0.2 else f for f in features_list
+        ]
+        with self.assertRaises(ValueError) as cm:
+            Pointclouds(
+                points=points_list, features=features_list, normals=normals_list
+            )
+            self.assertTrue("same device" in cm.msg)
+
+        points_padded = clouds.points_padded()  # on cuda:0
+        features_padded = clouds.features_padded().to("cpu")
+        normals_padded = clouds.normals_padded()
+
+        with self.assertRaises(ValueError) as cm:
+            Pointclouds(
+                points=points_padded, features=features_padded, normals=normals_padded
+            )
+            self.assertTrue("same device" in cm.msg)
 
     def test_all_constructions(self):
         public_getters = [
@@ -381,6 +436,37 @@ class TestPointclouds(TestCaseMixin, unittest.TestCase):
                 )
 
             self.assertCloudsEqual(clouds, new_clouds)
+
+    def test_detach(self):
+        N = 5
+        for lists_to_tensors in (True, False):
+            clouds = self.init_cloud(
+                N, 100, 5, lists_to_tensors=lists_to_tensors, requires_grad=True
+            )
+            for force in (False, True):
+                if force:
+                    clouds.points_packed()
+
+                new_clouds = clouds.detach()
+
+                for cloud in new_clouds.points_list():
+                    self.assertFalse(cloud.requires_grad)
+                for normal in new_clouds.normals_list():
+                    self.assertFalse(normal.requires_grad)
+                for feats in new_clouds.features_list():
+                    self.assertFalse(feats.requires_grad)
+
+                for attrib in [
+                    "points_packed",
+                    "normals_packed",
+                    "features_packed",
+                    "points_padded",
+                    "normals_padded",
+                    "features_padded",
+                ]:
+                    self.assertFalse(getattr(new_clouds, attrib)().requires_grad)
+
+                self.assertCloudsEqual(clouds, new_clouds)
 
     def assertCloudsEqual(self, cloud1, cloud2):
         N = len(cloud1)

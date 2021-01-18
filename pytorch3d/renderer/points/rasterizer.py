@@ -2,7 +2,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
 
 
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -29,8 +29,8 @@ class PointsRasterizationSettings:
 
     def __init__(
         self,
-        image_size: int = 256,
-        radius: float = 0.01,
+        image_size: Union[int, Tuple[int, int]] = 256,
+        radius: Union[float, torch.Tensor] = 0.01,
         points_per_pixel: int = 8,
         bin_size: Optional[int] = None,
         max_points_per_bin: Optional[int] = None,
@@ -98,6 +98,11 @@ class PointsRasterizer(nn.Module):
         pts_screen[..., 2] = pts_view[..., 2]
         point_clouds = point_clouds.update_padded(pts_screen)
         return point_clouds
+
+    def to(self, device):
+        # Manually move to device cameras as it is not a subclass of nn.Module
+        self.cameras = self.cameras.to(device)
+        return self
 
     def forward(self, point_clouds, **kwargs) -> PointFragments:
         """

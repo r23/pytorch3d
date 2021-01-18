@@ -2,7 +2,6 @@
 
 import torch
 
-from .. import ops
 from . import utils as struct_utils
 
 
@@ -56,7 +55,7 @@ class Pointclouds(object):
         [0.2, 0.3, 0.4],       |       [0.7, 0.3, 0.6],  |
         [0.9, 0.3, 0.8],       |       [0.2, 0.4, 0.8],  |
       ]                        |       [0.9, 0.5, 0.2],  |
-   ])                          |       [0.2, 0.3, 0.4],  |
+    ])                         |       [0.2, 0.3, 0.4],  |
                                |       [0.9, 0.3, 0.8]   |
                                |     ]                   |
                                |  ])                     |
@@ -181,11 +180,13 @@ class Pointclouds(object):
             self._num_points_per_cloud = []
 
             if self._N > 0:
+                self.device = self._points_list[0].device
                 for p in self._points_list:
                     if len(p) > 0 and (p.dim() != 2 or p.shape[1] != 3):
                         raise ValueError("Clouds in list must be of shape Px3 or empty")
+                    if p.device != self.device:
+                        raise ValueError("All points must be on the same device")
 
-                self.device = self._points_list[0].device
                 num_points_per_cloud = torch.tensor(
                     [len(p) for p in self._points_list], device=self.device
                 )
@@ -262,6 +263,10 @@ class Pointclouds(object):
                     raise ValueError(
                         "A cloud has mismatched numbers of points and inputs"
                     )
+                if d.device != self.device:
+                    raise ValueError(
+                        "All auxillary inputs must be on the same device as the points."
+                    )
                 if p > 0:
                     if d.dim() != 2:
                         raise ValueError(
@@ -283,6 +288,10 @@ class Pointclouds(object):
                 raise ValueError(
                     "Inputs tensor must have the right maximum \
                     number of points in each cloud."
+                )
+            if aux_input.device != self.device:
+                raise ValueError(
+                    "All auxillary inputs must be on the same device as the points."
                 )
             aux_input_C = aux_input.shape[2]
             return None, aux_input, aux_input_C
@@ -655,6 +664,42 @@ class Pointclouds(object):
                 setattr(other, k, v.clone())
         return other
 
+    def detach(self):
+        """
+        Detach Pointclouds object. All internal tensors are detached
+        individually.
+
+        Returns:
+            new Pointclouds object.
+        """
+        # instantiate new pointcloud with the representation which is not None
+        # (either list or tensor) to save compute.
+        new_points, new_normals, new_features = None, None, None
+        if self._points_list is not None:
+            new_points = [v.detach() for v in self.points_list()]
+            normals_list = self.normals_list()
+            features_list = self.features_list()
+            if normals_list is not None:
+                new_normals = [n.detach() for n in normals_list]
+            if features_list is not None:
+                new_features = [f.detach() for f in features_list]
+        elif self._points_padded is not None:
+            new_points = self.points_padded().detach()
+            normals_padded = self.normals_padded()
+            features_padded = self.features_padded()
+            if normals_padded is not None:
+                new_normals = self.normals_padded().detach()
+            if features_padded is not None:
+                new_features = self.features_padded().detach()
+        other = self.__class__(
+            points=new_points, normals=new_normals, features=new_features
+        )
+        for k in self._INTERNAL_TENSORS:
+            v = getattr(self, k)
+            if torch.is_tensor(v):
+                setattr(other, k, v.detach())
+        return other
+
     def to(self, device, copy: bool = False):
         """
         Match functionality of torch.Tensor.to()
@@ -732,7 +777,7 @@ class Pointclouds(object):
             returned.
 
         Returns:
-            list[PointClouds].
+            list[Pointclouds].
         """
         if not all(isinstance(x, int) for x in split_sizes):
             raise ValueError("Value of split_sizes must be a list of integers.")
@@ -854,7 +899,7 @@ class Pointclouds(object):
         them to the internal tensors `self._normals_list` and `self._normals_padded`
 
         The function uses `ops.estimate_pointcloud_local_coord_frames`
-        to estimate the normals. Please refer to this function for more
+        to estimate the normals. Please refer to that function for more
         detailed information about the implemented algorithm.
 
         Args:
@@ -872,6 +917,7 @@ class Pointclouds(object):
           [1] Tombari, Salti, Di Stefano: Unique Signatures of Histograms for
           Local Surface Description, ECCV 2010.
         """
+        from .. import ops
 
         # estimate the normals
         normals_est = ops.estimate_pointcloud_normals(

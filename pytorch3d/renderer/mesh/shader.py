@@ -50,6 +50,13 @@ class HardPhongShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
+    def to(self, device):
+        # Manually move to device modules which are not subclasses of nn.Module
+        self.cameras = self.cameras.to(device)
+        self.materials = self.materials.to(device)
+        self.lights = self.lights.to(device)
+        return self
+
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         cameras = kwargs.get("cameras", self.cameras)
         if cameras is None:
@@ -98,6 +105,13 @@ class SoftPhongShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
+    def to(self, device):
+        # Manually move to device modules which are not subclasses of nn.Module
+        self.cameras = self.cameras.to(device)
+        self.materials = self.materials.to(device)
+        self.lights = self.lights.to(device)
+        return self
+
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         cameras = kwargs.get("cameras", self.cameras)
         if cameras is None:
@@ -117,7 +131,11 @@ class SoftPhongShader(nn.Module):
             cameras=cameras,
             materials=materials,
         )
-        images = softmax_rgb_blend(colors, fragments, blend_params)
+        znear = kwargs.get("znear", getattr(cameras, "znear", 1.0))
+        zfar = kwargs.get("zfar", getattr(cameras, "zfar", 100.0))
+        images = softmax_rgb_blend(
+            colors, fragments, blend_params, znear=znear, zfar=zfar
+        )
         return images
 
 
@@ -146,6 +164,13 @@ class HardGouraudShader(nn.Module):
         )
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
+
+    def to(self, device):
+        # Manually move to device modules which are not subclasses of nn.Module
+        self.cameras = self.cameras.to(device)
+        self.materials = self.materials.to(device)
+        self.lights = self.lights.to(device)
+        return self
 
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         cameras = kwargs.get("cameras", self.cameras)
@@ -199,6 +224,13 @@ class SoftGouraudShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
+    def to(self, device):
+        # Manually move to device modules which are not subclasses of nn.Module
+        self.cameras = self.cameras.to(device)
+        self.materials = self.materials.to(device)
+        self.lights = self.lights.to(device)
+        return self
+
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         cameras = kwargs.get("cameras", self.cameras)
         if cameras is None:
@@ -214,7 +246,11 @@ class SoftGouraudShader(nn.Module):
             cameras=cameras,
             materials=materials,
         )
-        images = softmax_rgb_blend(pixel_colors, fragments, self.blend_params)
+        znear = kwargs.get("znear", getattr(cameras, "znear", 1.0))
+        zfar = kwargs.get("zfar", getattr(cameras, "zfar", 100.0))
+        images = softmax_rgb_blend(
+            pixel_colors, fragments, self.blend_params, znear=znear, zfar=zfar
+        )
         return images
 
 
@@ -264,6 +300,13 @@ class HardFlatShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
+    def to(self, device):
+        # Manually move to device modules which are not subclasses of nn.Module
+        self.cameras = self.cameras.to(device)
+        self.materials = self.materials.to(device)
+        self.lights = self.lights.to(device)
+        return self
+
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         cameras = kwargs.get("cameras", self.cameras)
         if cameras is None:
@@ -308,7 +351,7 @@ class SoftSilhouetteShader(nn.Module):
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
-        """"
+        """
         Only want to render the silhouette so RGB values can be ones.
         There is no need for lighting or texturing
         """

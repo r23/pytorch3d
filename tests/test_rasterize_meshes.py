@@ -304,7 +304,7 @@ class TestRasterizeMeshes(TestCaseMixin, unittest.TestCase):
     def test_compare_coarse_cpu_vs_cuda(self):
         torch.manual_seed(231)
         N = 1
-        image_size = 512
+        image_size = (512, 512)
         blur_radius = 0.0
         bin_size = 32
         max_faces_per_bin = 20
@@ -552,6 +552,10 @@ class TestRasterizeMeshes(TestCaseMixin, unittest.TestCase):
             + (zbuf1 * grad_zbuf).sum()
             + (bary1 * grad_bary).sum()
         )
+
+        # avoid gradient error if rasterize_meshes_python() culls all triangles
+        loss1 += grad_var1.sum() * 0.0
+
         loss1.backward()
         grad_verts1 = grad_var1.grad.data.clone().cpu()
 
@@ -563,6 +567,10 @@ class TestRasterizeMeshes(TestCaseMixin, unittest.TestCase):
             + (zbuf2 * grad_zbuf).sum()
             + (bary2 * grad_bary).sum()
         )
+
+        # avoid gradient error if rasterize_meshes_python() culls all triangles
+        loss2 += grad_var2.sum() * 0.0
+
         grad_var1.grad.data.zero_()
         loss2.backward()
         grad_verts2 = grad_var2.grad.data.clone().cpu()
@@ -1069,7 +1077,7 @@ class TestRasterizeMeshes(TestCaseMixin, unittest.TestCase):
             self.assertClose(dists, expected_dists)
 
     def _test_coarse_rasterize(self, device):
-        image_size = 16
+        image_size = (16, 16)
         # No blurring. This test checks that the XY directions are
         # correctly oriented.
         blur_radius = 0.0
