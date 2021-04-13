@@ -2,14 +2,13 @@
 
 from typing import List, Optional, Tuple, Union
 
+import numpy as np
 import torch
-
-# pyre-fixme[21]: Could not find name `_C` in `pytorch3d`.
-from pytorch3d import _C
+from pytorch3d import _C  # pyre-fixme[21]: Could not find name `_C` in `pytorch3d`.
 from pytorch3d.renderer.mesh.rasterize_meshes import pix_to_non_square_ndc
 
 
-# Maxinum number of faces per bins for
+# Maximum number of faces per bins for
 # coarse-to-fine rasterization
 kMaxPointsPerBin = 22
 
@@ -60,7 +59,7 @@ def rasterize_points(
             set it heuristically based on the shape of the input. This should not
             affect the output, but can affect the speed of the forward pass.
         points_per_bin: Only applicable when using coarse-to-fine rasterization
-            (bin_size > 0); this is the maxiumum number of points allowed within each
+            (bin_size > 0); this is the maximum number of points allowed within each
             bin. If more than this many points actually fall into a bin, an error
             will be raised. This should not affect the output values, but can affect
             the memory usage in the forward pass.
@@ -96,7 +95,7 @@ def rasterize_points(
     radius = _format_radius(radius, pointclouds)
 
     # In the case that H != W use the max image size to set the bin_size
-    # to accommodate the num bins constraint in the coarse rasteizer.
+    # to accommodate the num bins constraint in the coarse rasterizer.
     # If the ratio of H:W is large this might cause issues as the smaller
     # dimension will have fewer bins.
     # TODO: consider a better way of setting the bin size.
@@ -120,20 +119,10 @@ def rasterize_points(
             # Binned CPU rasterization not fully implemented
             bin_size = 0
         else:
-            # TODO: These heuristics are not well-thought out!
-            if max_image_size <= 64:
-                bin_size = 8
-            elif max_image_size <= 256:
-                bin_size = 16
-            elif max_image_size <= 512:
-                bin_size = 32
-            elif max_image_size <= 1024:
-                bin_size = 64
+            bin_size = int(2 ** max(np.ceil(np.log2(max_image_size)) - 4, 4))
 
     if bin_size != 0:
         # There is a limit on the number of points per bin in the cuda kernel.
-        # pyre-fixme[58]: `//` is not supported for operand types `int` and
-        #  `Union[int, None, int]`.
         points_per_bin = 1 + (max_image_size - 1) // bin_size
         if points_per_bin >= kMaxPointsPerBin:
             raise ValueError(
@@ -287,7 +276,7 @@ def rasterize_points_python(
     # Support variable size radius for each point in the batch
     radius = _format_radius(radius, pointclouds)
 
-    # Intialize output tensors.
+    # Initialize output tensors.
     point_idxs = torch.full(
         (N, H, W, K), fill_value=-1, dtype=torch.int32, device=device
     )

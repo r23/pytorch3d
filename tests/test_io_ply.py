@@ -158,6 +158,7 @@ class TestMeshPlyIO(TestCaseMixin, unittest.TestCase):
     def test_pluggable_load_cube(self):
         """
         This won't work on Windows due to NamedTemporaryFile being reopened.
+        Use the testpath package instead?
         """
         ply_file = "\n".join(CUBE_PLY_LINES)
         io = IO()
@@ -316,7 +317,7 @@ class TestMeshPlyIO(TestCaseMixin, unittest.TestCase):
                     file.close()
             self.assertLess(lengths[False], lengths[True], "ascii should be longer")
 
-    def test_heterogenous_property(self):
+    def test_heterogeneous_property(self):
         ply_file_ascii = "\n".join(
             [
                 "ply",
@@ -669,7 +670,7 @@ class TestMeshPlyIO(TestCaseMixin, unittest.TestCase):
         with self.assertRaisesRegex(ValueError, msg):
             _load_ply_raw(StringIO("\n".join(lines2)))
 
-        # Heterogenous cases
+        # Heterogeneous cases
         lines2 = lines.copy()
         lines2.insert(4, "property double y")
 

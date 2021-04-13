@@ -6,11 +6,15 @@ Sanity checks for output images from the renderer.
 """
 import os
 import unittest
-from pathlib import Path
 
 import numpy as np
 import torch
-from common_testing import TestCaseMixin, load_rgb_image
+from common_testing import (
+    TestCaseMixin,
+    get_pytorch3d_dir,
+    get_tests_dir,
+    load_rgb_image,
+)
 from PIL import Image
 from pytorch3d.io import load_obj
 from pytorch3d.renderer.cameras import (
@@ -46,7 +50,8 @@ from pytorch3d.utils.torus import torus
 # If DEBUG=True, save out images generated in the tests for debugging.
 # All saved images have prefix DEBUG_
 DEBUG = False
-DATA_DIR = Path(__file__).resolve().parent / "data"
+DATA_DIR = get_tests_dir() / "data"
+TUTORIAL_DATA_DIR = get_pytorch3d_dir() / "docs/tutorials/data"
 
 
 class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
@@ -384,8 +389,8 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
         The pupils in the eyes of the cow should always be looking to the left.
         """
         device = torch.device("cuda:0")
-        obj_dir = Path(__file__).resolve().parent.parent / "docs/tutorials/data"
-        obj_filename = obj_dir / "cow_mesh/cow.obj"
+
+        obj_filename = TUTORIAL_DATA_DIR / "cow_mesh/cow.obj"
 
         # Load mesh + texture
         verts, faces, aux = load_obj(
@@ -500,6 +505,7 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             blur_radius=np.log(1.0 / 1e-4 - 1.0) * blend_params.sigma,
             faces_per_pixel=100,
             clip_barycentric_coords=True,
+            perspective_correct=False,
         )
 
         # Load reference image
@@ -844,7 +850,10 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
         cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
 
         raster_settings = RasterizationSettings(
-            image_size=512, blur_radius=0.0, faces_per_pixel=1
+            image_size=512,
+            blur_radius=0.0,
+            faces_per_pixel=1,
+            perspective_correct=False,
         )
 
         lights = PointLights(
@@ -919,7 +928,10 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
         R, T = look_at_view_transform(2.7, 0.0, 0.0)
         cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
         raster_settings = RasterizationSettings(
-            image_size=512, blur_radius=0.0, faces_per_pixel=1
+            image_size=512,
+            blur_radius=0.0,
+            faces_per_pixel=1,
+            perspective_correct=False,
         )
 
         # Init shader settings
@@ -959,8 +971,8 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
         Also check that the backward pass for texture atlas rendering is differentiable.
         """
         device = torch.device("cuda:0")
-        obj_dir = Path(__file__).resolve().parent.parent / "docs/tutorials/data"
-        obj_filename = obj_dir / "cow_mesh/cow.obj"
+
+        obj_filename = TUTORIAL_DATA_DIR / "cow_mesh/cow.obj"
 
         # Load mesh and texture as a per face texture atlas.
         verts, faces, aux = load_obj(
@@ -987,6 +999,7 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             blur_radius=0.0,
             faces_per_pixel=1,
             cull_backfaces=True,
+            perspective_correct=False,
         )
 
         # Init shader settings
@@ -1039,7 +1052,7 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
         images[0, ...].sum().backward()
 
         fragments = rasterizer(mesh, raster_settings=raster_settings)
-        # Some of the bary coordinates are outisde the
+        # Some of the bary coordinates are outside the
         # [0, 1] range as expected because the blur is > 0
         self.assertTrue(fragments.bary_coords.ge(1.0).any())
         self.assertIsNotNone(atlas.grad)

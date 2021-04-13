@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
 
+import os
 import unittest
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -7,6 +8,25 @@ from typing import Callable, Optional, Union
 import numpy as np
 import torch
 from PIL import Image
+
+
+def get_tests_dir() -> Path:
+    """
+    Returns Path for the directory containing this file.
+    """
+    return Path(__file__).resolve().parent
+
+
+def get_pytorch3d_dir() -> Path:
+    """
+    Returns Path for the root PyTorch3D directory.
+
+    Facebook internal systems need a special case here.
+    """
+    if os.environ.get("INSIDE_RE_WORKER") is not None:
+        return Path(__file__).resolve().parent
+    else:
+        return Path(__file__).resolve().parent.parent
 
 
 def load_rgb_image(filename: str, data_dir: Union[str, Path]):
@@ -99,12 +119,9 @@ class TestCaseMixin(unittest.TestCase):
         #    all(|norm_fn(input - other)| <= atol + rtol * |norm_fn(other)|) ==
         #    all(norm_fn(input - other) <= atol + rtol * norm_fn(other)).
 
-        backend = torch if torch.is_tensor(input) else np
-        close = backend.allclose(
+        self.assertClose(
             diff + other_, other_, rtol=rtol, atol=atol, equal_nan=equal_nan
         )
-
-        self.assertTrue(close, msg)
 
     def assertClose(
         self,

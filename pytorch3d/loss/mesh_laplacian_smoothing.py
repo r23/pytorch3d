@@ -9,7 +9,7 @@ def mesh_laplacian_smoothing(meshes, method: str = "uniform"):
     Computes the laplacian smoothing objective for a batch of meshes.
     This function supports three variants of Laplacian smoothing,
     namely with uniform weights("uniform"), with cotangent weights ("cot"),
-    and cotangent cuvature ("cotcurv").For more details read [1, 2].
+    and cotangent curvature ("cotcurv").For more details read [1, 2].
 
     Args:
         meshes: Meshes object with a batch of meshes.
@@ -108,6 +108,7 @@ def mesh_laplacian_smoothing(meshes, method: str = "uniform"):
                 idx = norm_w > 0
                 norm_w[idx] = 1.0 / norm_w[idx]
             else:
+                L_sum = torch.sparse.sum(L, dim=1).to_dense().view(-1, 1)
                 norm_w = 0.25 * inv_areas
         else:
             raise ValueError("Method should be one of {uniform, cot, cotcurv}")
@@ -117,7 +118,7 @@ def mesh_laplacian_smoothing(meshes, method: str = "uniform"):
     elif method == "cot":
         loss = L.mm(verts_packed) * norm_w - verts_packed
     elif method == "cotcurv":
-        loss = (L.mm(verts_packed) - verts_packed) * norm_w
+        loss = (L.mm(verts_packed) - L_sum * verts_packed) * norm_w
     loss = loss.norm(dim=1)
 
     loss = loss * weights

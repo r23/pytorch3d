@@ -16,10 +16,7 @@ import cv2
 import imageio
 import numpy as np
 import torch
-
-# Import `look_at_view_transform` as needed in the suggestion later in the
-# example.
-from pytorch3d.renderer.cameras import PerspectiveCameras  # , look_at_view_transform
+from pytorch3d.renderer.cameras import PerspectiveCameras
 from pytorch3d.renderer.points import (
     PointsRasterizationSettings,
     PointsRasterizer,
@@ -123,11 +120,11 @@ class SceneModel(nn.Module):
             focal_length=self.focal_length,
             R=self.cam_rot[None, ...],
             T=self.cam_pos[None, ...],
-            image_size=((WIDTH, HEIGHT),),
+            image_size=((HEIGHT, WIDTH),),
             device=DEVICE,
         )
         raster_settings = PointsRasterizationSettings(
-            image_size=(WIDTH, HEIGHT),
+            image_size=(HEIGHT, WIDTH),
             radius=self.vert_rad,
         )
         rasterizer = PointsRasterizer(

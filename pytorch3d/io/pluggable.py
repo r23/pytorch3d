@@ -11,6 +11,7 @@ from iopath.common.file_io import PathManager
 from pytorch3d.structures import Meshes, Pointclouds
 
 from .obj_io import MeshObjFormat
+from .off_io import MeshOffFormat
 from .pluggable_formats import MeshFormatInterpreter, PointcloudFormatInterpreter
 from .ply_io import MeshPlyFormat, PointcloudPlyFormat
 
@@ -32,7 +33,7 @@ and to save a point cloud you might do
 
 ```
 pcl = Pointclouds(...)
-IO().save_pointcloud(pcl, "output_poincloud.obj")
+IO().save_pointcloud(pcl, "output_pointcloud.obj")
 ```
 
 """
@@ -42,7 +43,7 @@ class IO:
     """
     This class is the interface to flexible loading and saving of meshes and point clouds.
 
-    In simple cases the user will just initialise an instance of this class as `IO()`
+    In simple cases the user will just initialize an instance of this class as `IO()`
     and then use its load and save functions. The arguments of the initializer are not
     usually needed.
 
@@ -52,7 +53,7 @@ class IO:
     Args:
         include_default_formats: If False, the built-in file formats will not be available.
             Then only user-registered formats can be used.
-        path_manager: Used to customise how paths given as strings are interpreted.
+        path_manager: Used to customize how paths given as strings are interpreted.
     """
 
     def __init__(
@@ -73,6 +74,7 @@ class IO:
 
     def register_default_formats(self) -> None:
         self.register_meshes_format(MeshObjFormat())
+        self.register_meshes_format(MeshOffFormat())
         self.register_meshes_format(MeshPlyFormat())
         self.register_pointcloud_format(PointcloudPlyFormat())
 

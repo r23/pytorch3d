@@ -22,13 +22,13 @@ class Meshes(object):
       - has specific batch dimension.
     Packed
       - no batch dimension.
-      - has auxillary variables used to index into the padded representation.
+      - has auxiliary variables used to index into the padded representation.
 
     Example:
 
     Input list of verts V_n = [[V_1], [V_2], ... , [V_N]]
     where V_1, ... , V_N are the number of verts in each mesh and N is the
-    numer of meshes.
+    number of meshes.
 
     Input list of faces F_n = [[F_1], [F_2], ... , [F_N]]
     where F_1, ... , F_N are the number of faces in each mesh.
@@ -100,7 +100,7 @@ class Meshes(object):
                                |   ])                    |
     -----------------------------------------------------------------------------
 
-    Auxillary variables for packed representation
+    Auxiliary variables for packed representation
 
     Name                           |   Size              |  Example from above
     -------------------------------|---------------------|-----------------------
@@ -139,7 +139,7 @@ class Meshes(object):
     # SPHINX IGNORE
 
     From the faces, edges are computed and have packed and padded
-    representations with auxillary variables.
+    representations with auxiliary variables.
 
     E_n = [[E_1], ... , [E_N]]
     where E_1, ... , E_N are the number of unique edges in each mesh.
@@ -894,7 +894,7 @@ class Meshes(object):
     def _compute_packed(self, refresh: bool = False):
         """
         Computes the packed version of the meshes from verts_list and faces_list
-        and sets the values of auxillary tensors.
+        and sets the values of auxiliary tensors.
 
         Args:
             refresh: Set to True to force recomputation of packed representations.
@@ -1022,7 +1022,7 @@ class Meshes(object):
         # Remove duplicate edges: convert each edge (v0, v1) into an
         # integer hash = V * v0 + v1; this allows us to use the scalar version of
         # unique which is much faster than edges.unique(dim=1) which is very slow.
-        # After finding the unique elements reconstruct the vertex indicies as:
+        # After finding the unique elements reconstruct the vertex indices as:
         # (v0, v1) = (hash / V, hash % V)
         # The inverse maps from unique_edges back to edges:
         # unique_edges[inverse_idxs] == edges
@@ -1197,7 +1197,7 @@ class Meshes(object):
                 if torch.is_tensor(v):
                     setattr(other, k, v.to(device))
             if self.textures is not None:
-                other.textures = self.textures.to(device)
+                other.textures = other.textures.to(device)
         return other
 
     def cpu(self):
@@ -1255,12 +1255,15 @@ class Meshes(object):
         Add an offset to the vertices of this Meshes. In place operation.
 
         Args:
-            vert_offsets_packed: A Tensor of the same shape as self.verts_packed
-                               giving offsets to be added to all vertices.
+            vert_offsets_packed: A Tensor of shape (3,) or the same shape as
+                                self.verts_packed, giving offsets to be added
+                                to all vertices.
         Returns:
             self.
         """
         verts_packed = self.verts_packed()
+        if vert_offsets_packed.shape == (3,):
+            vert_offsets_packed = vert_offsets_packed.expand_as(verts_packed)
         if vert_offsets_packed.shape != verts_packed.shape:
             raise ValueError("Verts offsets must have dimension (all_v, 3).")
         # update verts packed
@@ -1581,6 +1584,12 @@ def join_meshes_as_scene(
     Returns:
         new Meshes object containing a single mesh
     """
+    if not isinstance(include_textures, (bool, int)):
+        # We want to avoid letting join_meshes_as_scene(mesh1, mesh2) silently
+        # do the wrong thing.
+        raise ValueError(
+            f"include_textures argument cannot be {type(include_textures)}"
+        )
     if isinstance(meshes, List):
         meshes = join_meshes_as_batch(meshes, include_textures=include_textures)
 

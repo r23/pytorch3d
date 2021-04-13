@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import torch
 from plotly.subplots import make_subplots
 from pytorch3d.renderer import TexturesVertex
+from pytorch3d.renderer.camera_utils import camera_to_eye_at_up
 from pytorch3d.renderer.cameras import CamerasBase
 from pytorch3d.structures import Meshes, Pointclouds, join_meshes_as_scene
 
@@ -60,14 +61,14 @@ def plot_scene(
     **kwargs,
 ):
     """
-    Main function to visualize Meshes and Pointclouds.
+    Main function to visualize Meshes, Cameras and Pointclouds.
     Plots input Pointclouds, Meshes, and Cameras data into named subplots,
     with named traces based on the dictionary keys. Cameras are
     rendered at the camera center location using a wireframe.
 
     Args:
         plots: A dict containing subplot and trace names,
-            as well as the Meshes and Pointclouds objects to be rendered.
+            as well as the Meshes, Cameras and Pointclouds objects to be rendered.
             See below for examples of the format.
         viewpoint_cameras: an instance of a Cameras object providing a location
             to view the plotly plot from. If the batch size is equal
@@ -224,23 +225,14 @@ def plot_scene(
     }
     viewpoints_eye_at_up_world = None
     if viewpoint_cameras:
-        if len(viewpoint_cameras) == len(subplots) or len(viewpoint_cameras) == 1:
+        n_viewpoint_cameras = len(viewpoint_cameras)
+        if n_viewpoint_cameras == len(subplots) or n_viewpoint_cameras == 1:
             # Calculate the vectors eye, at, up in world space
             # to initialize the position of the camera in
             # the plotly figure
-            # TODO(T77879494): correct the up vector calculation in the world space.
-            eye_at_up_view = (
-                torch.tensor([[0, 0, 0], [0, 0, 1], [0, 1, 0]])
-                .float()
-                .to(viewpoint_cameras.device)
+            viewpoints_eye_at_up_world = camera_to_eye_at_up(
+                viewpoint_cameras.get_world_to_view_transform().cpu()
             )
-            viewpoints_eye_at_up_world = (
-                viewpoint_cameras.get_world_to_view_transform()
-                .inverse()
-                .transform_points(eye_at_up_view)
-            )
-            if len(viewpoints_eye_at_up_world.shape) < 3:
-                viewpoints_eye_at_up_world = viewpoints_eye_at_up_world.unsqueeze(0)
         else:
             msg = "Invalid number {} of viewpoint cameras were provided. Either 1 \
             or {} cameras are required".format(
@@ -290,29 +282,33 @@ def plot_scene(
         # update camera viewpoint if provided
         if viewpoints_eye_at_up_world is not None:
             # Use camera params for batch index or the first camera if only one provided.
-            viewpoint_idx = min(len(viewpoints_eye_at_up_world) - 1, subplot_idx)
+            viewpoint_idx = min(n_viewpoint_cameras - 1, subplot_idx)
 
-            eye, at, _up = viewpoints_eye_at_up_world[viewpoint_idx]
-
+            eye, at, up = (i[viewpoint_idx] for i in viewpoints_eye_at_up_world)
             eye_x, eye_y, eye_z = eye.tolist()
-
             at_x, at_y, at_z = at.tolist()
+            up_x, up_y, up_z = up.tolist()
 
             # scale camera eye to plotly [-1, 1] ranges
             x_range = xaxis["range"]
             y_range = yaxis["range"]
             z_range = zaxis["range"]
 
-            eye_x = _scale_camera_to_bounds(eye_x, x_range)
-            eye_y = _scale_camera_to_bounds(eye_y, y_range)
-            eye_z = _scale_camera_to_bounds(eye_z, z_range)
+            eye_x = _scale_camera_to_bounds(eye_x, x_range, True)
+            eye_y = _scale_camera_to_bounds(eye_y, y_range, True)
+            eye_z = _scale_camera_to_bounds(eye_z, z_range, True)
 
-            at_x = _scale_camera_to_bounds(at_x, x_range)
-            at_y = _scale_camera_to_bounds(at_y, y_range)
-            at_z = _scale_camera_to_bounds(at_z, z_range)
+            at_x = _scale_camera_to_bounds(at_x, x_range, True)
+            at_y = _scale_camera_to_bounds(at_y, y_range, True)
+            at_z = _scale_camera_to_bounds(at_z, z_range, True)
+
+            up_x = _scale_camera_to_bounds(up_x, x_range, False)
+            up_y = _scale_camera_to_bounds(up_y, y_range, False)
+            up_z = _scale_camera_to_bounds(up_z, z_range, False)
 
             camera["eye"] = {"x": eye_x, "y": eye_y, "z": eye_z}
             camera["center"] = {"x": at_x, "y": at_y, "z": at_z}
+            camera["up"] = {"x": up_x, "y": up_y, "z": up_z}
 
         current_layout.update(
             {
@@ -571,18 +567,28 @@ def _add_pointcloud_trace(
         pointclouds: Pointclouds object to render. It can be batched.
         trace_name: name to label the trace with.
         subplot_idx: identifies the subplot, with 0 being the top left.
-        ncols: the number of sublpots per row.
+        ncols: the number of subplots per row.
         max_points_per_pointcloud: the number of points to render, which are randomly sampled.
         marker_size: the size of the rendered points
     """
     pointclouds = pointclouds.detach().cpu()
     verts = pointclouds.points_packed()
     features = pointclouds.features_packed()
-    total_points_count = max_points_per_pointcloud * len(pointclouds)
 
     indices = None
-    if verts.shape[0] > total_points_count:
-        indices = np.random.choice(verts.shape[0], total_points_count, replace=False)
+    if pointclouds.num_points_per_cloud().max() > max_points_per_pointcloud:
+        start_index = 0
+        index_list = []
+        for num_points in pointclouds.num_points_per_cloud():
+            if num_points > max_points_per_pointcloud:
+                indices_cloud = np.random.choice(
+                    num_points, max_points_per_pointcloud, replace=False
+                )
+                index_list.append(start_index + indices_cloud)
+            else:
+                index_list.append(start_index + np.arange(num_points))
+            start_index += num_points
+        indices = np.concatenate(index_list)
         verts = verts[indices]
 
     color = None
@@ -642,7 +648,7 @@ def _add_camera_trace(
         cameras: the Cameras object to render. It can be batched.
         trace_name: name to label the trace with.
         subplot_idx: identifies the subplot, with 0 being the top left.
-        ncols: the number of sublpots per row.
+        ncols: the number of subplots per row.
         camera_scale: the size of the wireframe used to render the Cameras object.
     """
     cam_wires = get_camera_wireframe(camera_scale).to(cameras.device)
@@ -751,7 +757,9 @@ def _update_axes_bounds(
     current_layout.update({"xaxis": xaxis, "yaxis": yaxis, "zaxis": zaxis})
 
 
-def _scale_camera_to_bounds(coordinate: float, axis_bounds: Tuple[float, float]):
+def _scale_camera_to_bounds(
+    coordinate: float, axis_bounds: Tuple[float, float], is_position: bool
+):
     """
     We set our plotly plot's axes' bounding box to [-1,1]x[-1,1]x[-1,1]. As such,
     the plotly camera location has to be scaled accordingly to have its world coordinates
@@ -762,7 +770,12 @@ def _scale_camera_to_bounds(coordinate: float, axis_bounds: Tuple[float, float])
         coordinate: the float value to be transformed
         axis_bounds: the bounds of the plotly plot for the axis which
             the coordinate argument refers to
+        is_position: If true, the float value is the coordinate of a position, and so must
+            be moved in to [-1,1]. Otherwise it is a component of a direction, and so needs only
+            to be scaled.
     """
     scale = (axis_bounds[1] - axis_bounds[0]) / 2
+    if not is_position:
+        return coordinate / scale
     offset = (axis_bounds[1] / scale) - 1
     return coordinate / scale - offset

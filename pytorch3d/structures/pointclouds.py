@@ -18,7 +18,7 @@ class Pointclouds(object):
        - has specific batch dimension.
     Packed
        - no batch dimension.
-       - has auxillary variables used to index into the padded representation.
+       - has auxiliary variables used to index into the padded representation.
 
     Example
 
@@ -61,7 +61,7 @@ class Pointclouds(object):
                                |  ])                     |
     -----------------------------------------------------------------------------
 
-    Auxillary variables for packed representation
+    Auxiliary variables for packed representation
 
     Name                           |   Size              |  Example from above
     -------------------------------|---------------------|-----------------------
@@ -265,7 +265,7 @@ class Pointclouds(object):
                     )
                 if d.device != self.device:
                     raise ValueError(
-                        "All auxillary inputs must be on the same device as the points."
+                        "All auxiliary inputs must be on the same device as the points."
                     )
                 if p > 0:
                     if d.dim() != 2:
@@ -291,7 +291,7 @@ class Pointclouds(object):
                 )
             if aux_input.device != self.device:
                 raise ValueError(
-                    "All auxillary inputs must be on the same device as the points."
+                    "All auxiliary inputs must be on the same device as the points."
                 )
             aux_input_C = aux_input.shape[2]
             return None, aux_input, aux_input_C
@@ -508,7 +508,7 @@ class Pointclouds(object):
     def padded_to_packed_idx(self):
         """
         Return a 1D tensor x with length equal to the total number of points
-        such that points_packed()[i] is element x[i] of the flattened padded
+        such that points_packed()[i] is element x[i] of the flattened padded
         representation.
         The packed representation can be calculated as follows.
 
@@ -573,7 +573,7 @@ class Pointclouds(object):
     def _compute_packed(self, refresh: bool = False):
         """
         Computes the packed version from points_list, normals_list and
-        features_list and sets the values of auxillary tensors.
+        features_list and sets the values of auxiliary tensors.
 
         Args:
             refresh: Set to True to force recomputation of packed
@@ -793,12 +793,16 @@ class Pointclouds(object):
         Translate the point clouds by an offset. In place operation.
 
         Args:
-            offsets_packed: A Tensor of the same shape as self.points_packed
-                giving offsets to be added to all points.
+            offsets_packed: A Tensor of shape (3,) or the same shape
+                as self.points_packed giving offsets to be added to
+                all points.
+
         Returns:
             self.
         """
         points_packed = self.points_packed()
+        if offsets_packed.shape == (3,):
+            offsets_packed = offsets_packed.expand_as(points_packed)
         if offsets_packed.shape != points_packed.shape:
             raise ValueError("Offsets must have dimension (all_p, 3).")
         self._points_packed = points_packed + offsets_packed
@@ -903,14 +907,14 @@ class Pointclouds(object):
         detailed information about the implemented algorithm.
 
         Args:
-        **neighborhood_size**: The size of the neighborhood used to estimate the
+          **neighborhood_size**: The size of the neighborhood used to estimate the
             geometry around each point.
-        **disambiguate_directions**: If `True`, uses the algorithm from [1] to
-            ensure sign consistency of the normals of neigboring points.
-        **normals**: A tensor of normals for each input point
+          **disambiguate_directions**: If `True`, uses the algorithm from [1] to
+            ensure sign consistency of the normals of neighboring points.
+          **normals**: A tensor of normals for each input point
             of shape `(minibatch, num_point, 3)`.
             If `pointclouds` are of `Pointclouds` class, returns a padded tensor.
-        **assign_to_self**: If `True`, assigns the computed normals to the
+          **assign_to_self**: If `True`, assigns the computed normals to the
             internal buffers overwriting any previously stored normals.
 
         References:
@@ -981,7 +985,7 @@ class Pointclouds(object):
         Args:
             new_points_padded: FloatTensor of shape (N, P, 3)
             new_normals_padded: (optional) FloatTensor of shape (N, P, 3)
-            new_features_padded: (optional) FloatTensors of shape (N, P, C)
+            new_features_padded: (optional) FloatTensor of shape (N, P, C)
 
         Returns:
             Pointcloud with updated padded representations
