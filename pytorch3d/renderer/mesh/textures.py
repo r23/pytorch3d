@@ -470,7 +470,7 @@ class TexturesAtlas(TexturesBase):
 
     def extend(self, N: int) -> "TexturesAtlas":
         new_props = self._extend(N, ["atlas_padded", "_num_faces_per_mesh"])
-        new_tex = TexturesAtlas(atlas=new_props["atlas_padded"])
+        new_tex = self.__class__(atlas=new_props["atlas_padded"])
         new_tex._num_faces_per_mesh = new_props["_num_faces_per_mesh"]
         return new_tex
 
@@ -842,8 +842,7 @@ class TexturesUV(TexturesBase):
             else:
                 # The number of vertices in the mesh and in verts_uvs can differ
                 # e.g. if a vertex is shared between 3 faces, it can
-                # have up to 3 different uv coordinates. Therefore we cannot
-                # convert directly from padded to list using _num_verts_per_mesh
+                # have up to 3 different uv coordinates.
                 self._verts_uvs_list = list(self._verts_uvs_padded.unbind(0))
         return self._verts_uvs_list
 
@@ -866,7 +865,7 @@ class TexturesUV(TexturesBase):
                 "_num_faces_per_mesh",
             ],
         )
-        new_tex = TexturesUV(
+        new_tex = self.__class__(
             maps=new_props["maps_padded"],
             faces_uvs=new_props["faces_uvs_padded"],
             verts_uvs=new_props["verts_uvs_padded"],
@@ -1283,12 +1282,7 @@ class TexturesVertex(TexturesBase):
         tex = self.__class__(self.verts_features_padded().clone())
         if self._verts_features_list is not None:
             tex._verts_features_list = [f.clone() for f in self._verts_features_list]
-        num_verts = (
-            self._num_verts_per_mesh.clone()
-            if torch.is_tensor(self._num_verts_per_mesh)
-            else self._num_verts_per_mesh
-        )
-        tex._num_verts_per_mesh = num_verts
+        tex._num_verts_per_mesh = self._num_verts_per_mesh.copy()
         tex.valid = self.valid.clone()
         return tex
 
@@ -1296,12 +1290,7 @@ class TexturesVertex(TexturesBase):
         tex = self.__class__(self.verts_features_padded().detach())
         if self._verts_features_list is not None:
             tex._verts_features_list = [f.detach() for f in self._verts_features_list]
-        num_verts = (
-            self._num_verts_per_mesh.detach()
-            if torch.is_tensor(self._num_verts_per_mesh)
-            else self._num_verts_per_mesh
-        )
-        tex._num_verts_per_mesh = num_verts
+        tex._num_verts_per_mesh = self._num_verts_per_mesh.copy()
         tex.valid = self.valid.detach()
         return tex
 
@@ -1350,7 +1339,7 @@ class TexturesVertex(TexturesBase):
 
     def extend(self, N: int) -> "TexturesVertex":
         new_props = self._extend(N, ["verts_features_padded", "_num_verts_per_mesh"])
-        new_tex = TexturesVertex(verts_features=new_props["verts_features_padded"])
+        new_tex = self.__class__(verts_features=new_props["verts_features_padded"])
         new_tex._num_verts_per_mesh = new_props["_num_verts_per_mesh"]
         return new_tex
 
@@ -1414,13 +1403,13 @@ class TexturesVertex(TexturesBase):
 
         verts_features_list = []
         verts_features_list += self.verts_features_list()
-        num_faces_per_mesh = self._num_verts_per_mesh
+        num_verts_per_mesh = self._num_verts_per_mesh.copy()
         for tex in textures:
             verts_features_list += tex.verts_features_list()
-            num_faces_per_mesh += tex._num_verts_per_mesh
+            num_verts_per_mesh += tex._num_verts_per_mesh
 
         new_tex = self.__class__(verts_features=verts_features_list)
-        new_tex._num_verts_per_mesh = num_faces_per_mesh
+        new_tex._num_verts_per_mesh = num_verts_per_mesh
         return new_tex
 
     def join_scene(self) -> "TexturesVertex":

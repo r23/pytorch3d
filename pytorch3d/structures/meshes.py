@@ -207,7 +207,14 @@ class Meshes(object):
         "equisized",
     ]
 
-    def __init__(self, verts=None, faces=None, textures=None):
+    def __init__(
+        self,
+        verts=None,
+        faces=None,
+        textures=None,
+        *,
+        verts_normals=None,
+    ):
         """
         Args:
             verts:
@@ -229,6 +236,17 @@ class Meshes(object):
                   the same number of faces.
             textures: Optional instance of the Textures class with mesh
                 texture properties.
+            verts_normals:
+                Optional. Can be either
+
+                - List where each element is a tensor of shape (num_verts, 3)
+                  containing the normals of each vertex.
+                - Padded float tensor with shape (num_meshes, max_num_verts, 3).
+                  They should be padded with fill value of 0 so they all have
+                  the same number of vertices.
+                Note that modifying the mesh later, e.g. with offset_verts_,
+                can cause these normals to be forgotten and normals to be recalculated
+                based on the new vertex positions.
 
         Refer to comments above for descriptions of List and Padded representations.
         """
@@ -354,8 +372,8 @@ class Meshes(object):
                     self.equisized = True
 
         elif torch.is_tensor(verts) and torch.is_tensor(faces):
-            if verts.size(2) != 3 and faces.size(2) != 3:
-                raise ValueError("Verts and Faces tensors have incorrect dimensions.")
+            if verts.size(2) != 3 or faces.size(2) != 3:
+                raise ValueError("Verts or Faces tensors have incorrect dimensions.")
             self._verts_padded = verts
             self._faces_padded = faces.to(torch.int64)
             self._N = self._verts_padded.shape[0]
@@ -411,6 +429,36 @@ class Meshes(object):
             self.textures._num_verts_per_mesh = self._num_verts_per_mesh.tolist()
             self.textures._N = self._N
             self.textures.valid = self.valid
+
+        if verts_normals is not None:
+            self._set_verts_normals(verts_normals)
+
+    def _set_verts_normals(self, verts_normals) -> None:
+        if isinstance(verts_normals, list):
+            if len(verts_normals) != self._N:
+                raise ValueError("Invalid verts_normals input")
+
+            for item, n_verts in zip(verts_normals, self._num_verts_per_mesh):
+                if (
+                    not isinstance(item, torch.Tensor)
+                    or item.ndim != 2
+                    or item.shape[1] != 3
+                    or item.shape[0] != n_verts
+                ):
+                    raise ValueError("Invalid verts_normals input")
+            self._verts_normals_packed = torch.cat(verts_normals, 0)
+        elif torch.is_tensor(verts_normals):
+            if (
+                verts_normals.ndim != 3
+                or verts_normals.size(2) != 3
+                or verts_normals.size(0) != self._N
+            ):
+                raise ValueError("Vertex normals tensor has incorrect dimensions.")
+            self._verts_normals_packed = struct_utils.padded_to_packed(
+                verts_normals, split_size=self._num_verts_per_mesh.tolist()
+            )
+        else:
+            raise ValueError("verts_normals must be a list or tensor")
 
     def __len__(self):
         return self._N
@@ -683,6 +731,12 @@ class Meshes(object):
             dim=0,
         )
         return self._verts_padded_to_packed_idx
+
+    def has_verts_normals(self) -> bool:
+        """
+        Check whether vertex normals are already present.
+        """
+        return self._verts_normals_packed is not None
 
     def verts_normals_packed(self):
         """
@@ -1253,6 +1307,7 @@ class Meshes(object):
     def offset_verts_(self, vert_offsets_packed):
         """
         Add an offset to the vertices of this Meshes. In place operation.
+        If normals are present they may be recalculated.
 
         Args:
             vert_offsets_packed: A Tensor of shape (3,) or the same shape as
@@ -1263,7 +1318,10 @@ class Meshes(object):
         """
         verts_packed = self.verts_packed()
         if vert_offsets_packed.shape == (3,):
+            update_normals = False
             vert_offsets_packed = vert_offsets_packed.expand_as(verts_packed)
+        else:
+            update_normals = True
         if vert_offsets_packed.shape != verts_packed.shape:
             raise ValueError("Verts offsets must have dimension (all_v, 3).")
         # update verts packed
@@ -1283,13 +1341,13 @@ class Meshes(object):
                     self._verts_padded[i, : verts.shape[0], :] = verts
 
         # update face areas and normals and vertex normals
-        # only if the original attributes are computed
-        if any(
+        # only if the original attributes are present
+        if update_normals and any(
             v is not None
             for v in [self._faces_areas_packed, self._faces_normals_packed]
         ):
             self._compute_face_areas_normals(refresh=True)
-        if self._verts_normals_packed is not None:
+        if update_normals and self._verts_normals_packed is not None:
             self._compute_vertex_normals(refresh=True)
 
         return self
@@ -1336,15 +1394,13 @@ class Meshes(object):
                 if len(verts) > 0:
                     self._verts_padded[i, : verts.shape[0], :] = verts
 
-        # update face areas and normals and vertex normals
+        # update face areas and normals
         # only if the original attributes are computed
         if any(
             v is not None
             for v in [self._faces_areas_packed, self._faces_normals_packed]
         ):
             self._compute_face_areas_normals(refresh=True)
-        if self._verts_normals_packed is not None:
-            self._compute_vertex_normals(refresh=True)
         return self
 
     def scale_verts(self, scale):
