@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 import os
 import unittest
@@ -110,7 +114,7 @@ class TestCaseMixin(unittest.TestCase):
         diff = norm_fn(input - other)
         other_ = norm_fn(other)
 
-        # We want to generalise allclose(input, output), which is essentially
+        # We want to generalize allclose(input, output), which is essentially
         #  all(diff <= atol + rtol * other)
         # but with a sophisticated handling non-finite values.
         # We work that around by calling allclose() with the following arguments:
@@ -120,7 +124,7 @@ class TestCaseMixin(unittest.TestCase):
         #    all(norm_fn(input - other) <= atol + rtol * norm_fn(other)).
 
         self.assertClose(
-            diff + other_, other_, rtol=rtol, atol=atol, equal_nan=equal_nan
+            diff + other_, other_, rtol=rtol, atol=atol, equal_nan=equal_nan, msg=msg
         )
 
     def assertClose(
@@ -154,20 +158,24 @@ class TestCaseMixin(unittest.TestCase):
             input, other, rtol=rtol, atol=atol, equal_nan=equal_nan
         )
 
-        if not close and msg is None:
-            diff = backend.abs(input - other) + 0.0
-            ratio = diff / backend.abs(other)
-            try_relative = (diff <= atol) | (backend.isfinite(ratio) & (ratio > 0))
-            if try_relative.all():
-                if backend == np:
-                    # Avoid a weirdness with zero dimensional arrays.
-                    ratio = np.array(ratio)
-                ratio[diff <= atol] = 0
-                extra = f" Max relative diff {ratio.max()}"
-            else:
-                extra = ""
-            shape = tuple(input.shape)
-            max_diff = diff.max()
-            self.fail(f"Not close. Max diff {max_diff}.{extra} Shape {shape}.")
+        if close:
+            return
 
-        self.assertTrue(close, msg)
+        diff = backend.abs(input + 0.0 - other)
+        ratio = diff / backend.abs(other)
+        try_relative = (diff <= atol) | (backend.isfinite(ratio) & (ratio > 0))
+        if try_relative.all():
+            if backend == np:
+                # Avoid a weirdness with zero dimensional arrays.
+                ratio = np.array(ratio)
+            ratio[diff <= atol] = 0
+            extra = f" Max relative diff {ratio.max()}"
+        else:
+            extra = ""
+        shape = tuple(input.shape)
+        loc = np.unravel_index(int(diff.argmax()), shape)
+        max_diff = diff.max()
+        err = f"Not close. Max diff {max_diff}.{extra} Shape {shape}. At {loc}."
+        if msg is not None:
+            self.fail(f"{msg} {err}")
+        self.fail(err)

@@ -1,13 +1,18 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 from typing import List, Union
 
 import torch
 
+from ..common.types import Device, make_device
 from . import utils as struct_utils
 
 
-class Meshes(object):
+class Meshes:
     """
     This class provides functions for working with batches of triangulated
     meshes with varying numbers of faces and vertices, and converting between
@@ -250,10 +255,11 @@ class Meshes(object):
 
         Refer to comments above for descriptions of List and Padded representations.
         """
-        self.device = None
+        self.device = torch.device("cpu")
         if textures is not None and not hasattr(textures, "sample_textures"):
             msg = "Expected textures to be an instance of type TexturesBase; got %r"
             raise ValueError(msg % type(textures))
+
         self.textures = textures
 
         # Indicates whether the meshes in the list/batch have the same number
@@ -339,7 +345,6 @@ class Meshes(object):
                 f[f.gt(-1).all(1)].to(torch.int64) if len(f) > 0 else f for f in faces
             ]
             self._N = len(self._verts_list)
-            self.device = torch.device("cpu")
             self.valid = torch.zeros((self._N,), dtype=torch.bool, device=self.device)
             if self._N > 0:
                 self.device = self._verts_list[0].device
@@ -424,10 +429,14 @@ class Meshes(object):
             )
 
         # Set the num verts/faces on the textures if present.
-        if self.textures is not None:
+        if textures is not None:
+            shape_ok = self.textures.check_shapes(self._N, self._V, self._F)
+            if not shape_ok:
+                msg = "Textures do not match the dimensions of Meshes."
+                raise ValueError(msg)
+
             self.textures._num_faces_per_mesh = self._num_faces_per_mesh.tolist()
             self.textures._num_verts_per_mesh = self._num_verts_per_mesh.tolist()
-            self.textures._N = self._N
             self.textures.valid = self.valid
 
         if verts_normals is not None:
@@ -1222,7 +1231,7 @@ class Meshes(object):
             other.textures = self.textures.detach()
         return other
 
-    def to(self, device, copy: bool = False):
+    def to(self, device: Device, copy: bool = False):
         """
         Match functionality of torch.Tensor.to()
         If copy = True or the self Tensor is on a different device, the
@@ -1231,34 +1240,37 @@ class Meshes(object):
         then self is returned.
 
         Args:
-            device: Device id for the new tensor.
+            device: Device (as str or torch.device) for the new tensor.
             copy: Boolean indicator whether or not to clone self. Default False.
 
         Returns:
             Meshes object.
         """
-        if not copy and self.device == device:
+        device_ = make_device(device)
+        if not copy and self.device == device_:
             return self
 
         other = self.clone()
-        if self.device != device:
-            other.device = device
-            if other._N > 0:
-                other._verts_list = [v.to(device) for v in other._verts_list]
-                other._faces_list = [f.to(device) for f in other._faces_list]
-            for k in self._INTERNAL_TENSORS:
-                v = getattr(self, k)
-                if torch.is_tensor(v):
-                    setattr(other, k, v.to(device))
-            if self.textures is not None:
-                other.textures = other.textures.to(device)
+        if self.device == device_:
+            return other
+
+        other.device = device_
+        if other._N > 0:
+            other._verts_list = [v.to(device_) for v in other._verts_list]
+            other._faces_list = [f.to(device_) for f in other._faces_list]
+        for k in self._INTERNAL_TENSORS:
+            v = getattr(self, k)
+            if torch.is_tensor(v):
+                setattr(other, k, v.to(device_))
+        if self.textures is not None:
+            other.textures = other.textures.to(device_)
         return other
 
     def cpu(self):
-        return self.to(torch.device("cpu"))
+        return self.to("cpu")
 
     def cuda(self):
-        return self.to(torch.device("cuda"))
+        return self.to("cuda")
 
     def get_mesh_verts_faces(self, index: int):
         """
@@ -1557,6 +1569,13 @@ class Meshes(object):
 
     def sample_textures(self, fragments):
         if self.textures is not None:
+
+            # Check dimensions of textures match that of meshes
+            shape_ok = self.textures.check_shapes(self._N, self._V, self._F)
+            if not shape_ok:
+                msg = "Textures do not match the dimensions of Meshes."
+                raise ValueError(msg)
+
             # Pass in faces packed. If the textures are defined per
             # vertex, the face indices are needed in order to interpolate
             # the vertex attributes across the face.

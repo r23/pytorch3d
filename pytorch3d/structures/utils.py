@@ -1,6 +1,10 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
-from typing import List, Sequence, Union
+from typing import List, Sequence, Tuple, Union
 
 import torch
 
@@ -11,7 +15,7 @@ Util functions for points/verts/faces/volumes.
 
 
 def list_to_padded(
-    x: List[torch.Tensor],
+    x: Union[List[torch.Tensor], Tuple[torch.Tensor]],
     pad_size: Union[Sequence[int], None] = None,
     pad_value: float = 0.0,
     equisized: bool = False,
@@ -66,7 +70,6 @@ def list_to_padded(
         pad_dims = pad_size
 
     N = len(x)
-    # pyre-fixme[16]: `Tensor` has no attribute `new_full`.
     x_padded = x[0].new_full((N, *pad_dims), pad_value)
     for i, y in enumerate(x):
         if len(y) > 0:

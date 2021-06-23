@@ -1,5 +1,7 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
-# This source code is licensed under the license found in the
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
 
@@ -462,7 +464,7 @@ def _read_ply_element_ascii(f, definition: _PlyElementType):
     return data
 
 
-def _read_raw_array(f, aim: str, length: int, dtype=np.uint8, dtype_size=1):
+def _read_raw_array(f, aim: str, length: int, dtype: type = np.uint8, dtype_size=1):
     """
     Read [length] elements from a file.
 
@@ -1154,9 +1156,14 @@ def _save_ply(
             if ascii:
                 np.savetxt(f, faces_array, "3 %d %d %d")
             else:
-                # rows are 13 bytes: a one-byte 3 followed by three four-byte face indices.
-                faces_uints = np.full((len(faces_array), 13), 3, dtype=np.uint8)
-                faces_uints[:, 1:] = faces_array.astype(np.uint32).view(np.uint8)
+                faces_recs = np.zeros(
+                    len(faces_array),
+                    dtype=[("count", np.uint8), ("vertex_indices", np.uint32, 3)],
+                )
+                faces_recs["count"] = 3
+                faces_recs["vertex_indices"] = faces_array
+                faces_uints = faces_recs.view(np.uint8)
+
                 if isinstance(f, BytesIO):
                     f.write(faces_uints.tobytes())
                 else:

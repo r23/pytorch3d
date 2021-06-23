@@ -1,10 +1,15 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 import warnings
 
 import torch
 import torch.nn as nn
 
+from ...common.types import Device
 from ..blending import (
     BlendParams,
     hard_rgb_blend,
@@ -40,7 +45,12 @@ class HardPhongShader(nn.Module):
     """
 
     def __init__(
-        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None
+        self,
+        device: Device = "cpu",
+        cameras=None,
+        lights=None,
+        materials=None,
+        blend_params=None,
     ):
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -50,9 +60,10 @@ class HardPhongShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
-    def to(self, device):
+    def to(self, device: Device):
         # Manually move to device modules which are not subclasses of nn.Module
-        self.cameras = self.cameras.to(device)
+        if self.cameras is not None:
+            self.cameras = self.cameras.to(device)
         self.materials = self.materials.to(device)
         self.lights = self.lights.to(device)
         return self
@@ -95,7 +106,12 @@ class SoftPhongShader(nn.Module):
     """
 
     def __init__(
-        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None
+        self,
+        device: Device = "cpu",
+        cameras=None,
+        lights=None,
+        materials=None,
+        blend_params=None,
     ):
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -105,9 +121,10 @@ class SoftPhongShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
-    def to(self, device):
+    def to(self, device: Device):
         # Manually move to device modules which are not subclasses of nn.Module
-        self.cameras = self.cameras.to(device)
+        if self.cameras is not None:
+            self.cameras = self.cameras.to(device)
         self.materials = self.materials.to(device)
         self.lights = self.lights.to(device)
         return self
@@ -155,7 +172,12 @@ class HardGouraudShader(nn.Module):
     """
 
     def __init__(
-        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None
+        self,
+        device: Device = "cpu",
+        cameras=None,
+        lights=None,
+        materials=None,
+        blend_params=None,
     ):
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -165,9 +187,10 @@ class HardGouraudShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
-    def to(self, device):
+    def to(self, device: Device):
         # Manually move to device modules which are not subclasses of nn.Module
-        self.cameras = self.cameras.to(device)
+        if self.cameras is not None:
+            self.cameras = self.cameras.to(device)
         self.materials = self.materials.to(device)
         self.lights = self.lights.to(device)
         return self
@@ -214,7 +237,12 @@ class SoftGouraudShader(nn.Module):
     """
 
     def __init__(
-        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None
+        self,
+        device: Device = "cpu",
+        cameras=None,
+        lights=None,
+        materials=None,
+        blend_params=None,
     ):
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -224,9 +252,10 @@ class SoftGouraudShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
-    def to(self, device):
+    def to(self, device: Device):
         # Manually move to device modules which are not subclasses of nn.Module
-        self.cameras = self.cameras.to(device)
+        if self.cameras is not None:
+            self.cameras = self.cameras.to(device)
         self.materials = self.materials.to(device)
         self.lights = self.lights.to(device)
         return self
@@ -255,7 +284,7 @@ class SoftGouraudShader(nn.Module):
 
 
 def TexturedSoftPhongShader(
-    device="cpu", cameras=None, lights=None, materials=None, blend_params=None
+    device: Device = "cpu", cameras=None, lights=None, materials=None, blend_params=None
 ):
     """
     TexturedSoftPhongShader class has been DEPRECATED. Use SoftPhongShader instead.
@@ -290,7 +319,12 @@ class HardFlatShader(nn.Module):
     """
 
     def __init__(
-        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None
+        self,
+        device: Device = "cpu",
+        cameras=None,
+        lights=None,
+        materials=None,
+        blend_params=None,
     ):
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -300,9 +334,10 @@ class HardFlatShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
 
-    def to(self, device):
+    def to(self, device: Device):
         # Manually move to device modules which are not subclasses of nn.Module
-        self.cameras = self.cameras.to(device)
+        if self.cameras is not None:
+            self.cameras = self.cameras.to(device)
         self.materials = self.materials.to(device)
         self.lights = self.lights.to(device)
         return self

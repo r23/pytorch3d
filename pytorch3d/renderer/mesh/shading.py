@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 
 from typing import Tuple
@@ -14,8 +18,8 @@ def _apply_lighting(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Args:
-        points: torch tensor of shape (N, P, 3) or (P, 3).
-        normals: torch tensor of shape (N, P, 3) or (P, 3)
+        points: torch tensor of shape (N, ..., 3) or (P, 3).
+        normals: torch tensor of shape (N, ..., 3) or (P, 3)
         lights: instance of the Lights class.
         cameras: instance of the Cameras class.
         materials: instance of the Materials class.
@@ -35,6 +39,7 @@ def _apply_lighting(
     ambient_color = materials.ambient_color * lights.ambient_color
     diffuse_color = materials.diffuse_color * light_diffuse
     specular_color = materials.specular_color * light_specular
+
     if normals.dim() == 2 and points.dim() == 2:
         # If given packed inputs remove batch dim in output.
         return (
@@ -42,6 +47,11 @@ def _apply_lighting(
             diffuse_color.squeeze(),
             specular_color.squeeze(),
         )
+
+    if ambient_color.ndim != diffuse_color.ndim:
+        # Reshape from (N, 3) to have dimensions compatible with
+        # diffuse_color which is of shape (N, H, W, K, 3)
+        ambient_color = ambient_color[:, None, None, None, :]
     return ambient_color, diffuse_color, specular_color
 
 

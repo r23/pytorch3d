@@ -1,10 +1,14 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 
-from typing import NamedTuple, Sequence
+from typing import NamedTuple, Sequence, Union
 
 import torch
-from pytorch3d import _C  # pyre-fixme[21]: Could not find name `_C` in `pytorch3d`.
+from pytorch3d import _C
 
 
 # Example functions for blending the top K colors per pixel using the outputs
@@ -58,7 +62,8 @@ def hard_rgb_blend(colors, fragments, blend_params) -> torch.Tensor:
     )  # (N, H, W, 3)
 
     # Concat with the alpha channel.
-    alpha = torch.ones((N, H, W, 1), dtype=colors.dtype, device=device)
+    alpha = (~is_background).type_as(pixel_colors)[..., None]
+
     return torch.cat([pixel_colors, alpha], dim=-1)  # (N, H, W, 4)
 
 
@@ -116,7 +121,11 @@ def sigmoid_alpha_blend(colors, fragments, blend_params) -> torch.Tensor:
 
 
 def softmax_rgb_blend(
-    colors, fragments, blend_params, znear: float = 1.0, zfar: float = 100
+    colors,
+    fragments,
+    blend_params,
+    znear: Union[float, torch.Tensor] = 1.0,
+    zfar: Union[float, torch.Tensor] = 100,
 ) -> torch.Tensor:
     """
     RGB and alpha channel blending to return an RGBA image based on the method
@@ -183,11 +192,16 @@ def softmax_rgb_blend(
     # overflow. zbuf shape (N, H, W, K), find max over K.
     # TODO: there may still be some instability in the exponent calculation.
 
+    # Reshape to be compatible with (N, H, W, K) values in fragments
+    if torch.is_tensor(zfar):
+        # pyre-fixme[16]
+        zfar = zfar[:, None, None, None]
+    if torch.is_tensor(znear):
+        znear = znear[:, None, None, None]
+
     z_inv = (zfar - fragments.zbuf) / (zfar - znear) * mask
     # pyre-fixme[16]: `Tuple` has no attribute `values`.
-    # pyre-fixme[6]: Expected `Tensor` for 1st param but got `float`.
     z_inv_max = torch.max(z_inv, dim=-1).values[..., None].clamp(min=eps)
-    # pyre-fixme[6]: Expected `Tensor` for 1st param but got `float`.
     weights_num = prob_map * torch.exp((z_inv - z_inv_max) / blend_params.gamma)
 
     # Also apply exp normalize trick for the background color weight.

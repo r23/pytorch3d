@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 
 """
@@ -6,6 +10,7 @@ Sanity checks for output images from the renderer.
 """
 import os
 import unittest
+from collections import namedtuple
 
 import numpy as np
 import torch
@@ -24,7 +29,7 @@ from pytorch3d.renderer.cameras import (
     PerspectiveCameras,
     look_at_view_transform,
 )
-from pytorch3d.renderer.lighting import PointLights
+from pytorch3d.renderer.lighting import AmbientLights, PointLights
 from pytorch3d.renderer.materials import Materials
 from pytorch3d.renderer.mesh import TexturesAtlas, TexturesUV, TexturesVertex
 from pytorch3d.renderer.mesh.rasterizer import MeshRasterizer, RasterizationSettings
@@ -52,6 +57,8 @@ from pytorch3d.utils.torus import torus
 DEBUG = False
 DATA_DIR = get_tests_dir() / "data"
 TUTORIAL_DATA_DIR = get_pytorch3d_dir() / "docs/tutorials/data"
+
+ShaderTest = namedtuple("ShaderTest", ["shader", "reference_name", "debug_name"])
 
 
 class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
@@ -107,13 +114,13 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             blend_params = BlendParams(1e-4, 1e-4, (0, 0, 0))
 
             # Test several shaders
-            shaders = {
-                "phong": HardPhongShader,
-                "gouraud": HardGouraudShader,
-                "flat": HardFlatShader,
-            }
-            for (name, shader_init) in shaders.items():
-                shader = shader_init(
+            shader_tests = [
+                ShaderTest(HardPhongShader, "phong", "hard_phong"),
+                ShaderTest(HardGouraudShader, "gouraud", "hard_gouraud"),
+                ShaderTest(HardFlatShader, "flat", "hard_flat"),
+            ]
+            for test in shader_tests:
+                shader = test.shader(
                     lights=lights,
                     cameras=cameras,
                     materials=materials,
@@ -125,13 +132,17 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
                     )
                     images, fragments = renderer(sphere_mesh)
                     self.assertClose(fragments.zbuf, rasterizer(sphere_mesh).zbuf)
+                    # Check the alpha channel is the mask
+                    self.assertClose(
+                        images[..., -1], (fragments.pix_to_face[..., 0] >= 0).float()
+                    )
                 else:
                     renderer = MeshRenderer(rasterizer=rasterizer, shader=shader)
                     images = renderer(sphere_mesh)
 
                 rgb = images[0, ..., :3].squeeze().cpu()
                 filename = "simple_sphere_light_%s%s%s.png" % (
-                    name,
+                    test.reference_name,
                     postfix,
                     cam_type.__name__,
                 )
@@ -140,7 +151,12 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
                 self.assertClose(rgb, image_ref, atol=0.05)
 
                 if DEBUG:
-                    filename = "DEBUG_%s" % filename
+                    debug_filename = "simple_sphere_light_%s%s%s.png" % (
+                        test.debug_name,
+                        postfix,
+                        cam_type.__name__,
+                    )
+                    filename = "DEBUG_%s" % debug_filename
                     Image.fromarray((rgb.numpy() * 255).astype(np.uint8)).save(
                         DATA_DIR / filename
                     )
@@ -164,6 +180,10 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
                 images, fragments = phong_renderer(sphere_mesh, lights=lights)
                 self.assertClose(
                     fragments.zbuf, rasterizer(sphere_mesh, lights=lights).zbuf
+                )
+                # Check the alpha channel is the mask
+                self.assertClose(
+                    images[..., -1], (fragments.pix_to_face[..., 0] >= 0).float()
                 )
             else:
                 phong_renderer = MeshRenderer(
@@ -261,7 +281,8 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
     def test_simple_sphere_batched(self):
         """
         Test a mesh with vertex textures can be extended to form a batch, and
-        is rendered correctly with Phong, Gouraud and Flat Shaders.
+        is rendered correctly with Phong, Gouraud and Flat Shaders with batched
+        lighting and hard and soft blending.
         """
         batch_size = 5
         device = torch.device("cuda:0")
@@ -283,24 +304,28 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
         R, T = look_at_view_transform(dist, elev, azim)
         cameras = FoVPerspectiveCameras(device=device, R=R, T=T)
         raster_settings = RasterizationSettings(
-            image_size=512, blur_radius=0.0, faces_per_pixel=1
+            image_size=512, blur_radius=0.0, faces_per_pixel=4
         )
 
         # Init shader settings
         materials = Materials(device=device)
-        lights = PointLights(device=device)
-        lights.location = torch.tensor([0.0, 0.0, +2.0], device=device)[None]
+        lights_location = torch.tensor([0.0, 0.0, +2.0], device=device)
+        lights_location = lights_location[None].expand(batch_size, -1)
+        lights = PointLights(device=device, location=lights_location)
         blend_params = BlendParams(1e-4, 1e-4, (0, 0, 0))
 
         # Init renderer
         rasterizer = MeshRasterizer(cameras=cameras, raster_settings=raster_settings)
-        shaders = {
-            "phong": HardPhongShader,
-            "gouraud": HardGouraudShader,
-            "flat": HardFlatShader,
-        }
-        for (name, shader_init) in shaders.items():
-            shader = shader_init(
+        shader_tests = [
+            ShaderTest(HardPhongShader, "phong", "hard_phong"),
+            ShaderTest(SoftPhongShader, "phong", "soft_phong"),
+            ShaderTest(HardGouraudShader, "gouraud", "hard_gouraud"),
+            ShaderTest(HardFlatShader, "flat", "hard_flat"),
+        ]
+        for test in shader_tests:
+            reference_name = test.reference_name
+            debug_name = test.debug_name
+            shader = test.shader(
                 lights=lights,
                 cameras=cameras,
                 materials=materials,
@@ -309,14 +334,15 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             renderer = MeshRenderer(rasterizer=rasterizer, shader=shader)
             images = renderer(sphere_meshes)
             image_ref = load_rgb_image(
-                "test_simple_sphere_light_%s_%s.png" % (name, type(cameras).__name__),
+                "test_simple_sphere_light_%s_%s.png"
+                % (reference_name, type(cameras).__name__),
                 DATA_DIR,
             )
             for i in range(batch_size):
                 rgb = images[i, ..., :3].squeeze().cpu()
                 if i == 0 and DEBUG:
                     filename = "DEBUG_simple_sphere_batched_%s_%s.png" % (
-                        name,
+                        debug_name,
                         type(cameras).__name__,
                     )
                     Image.fromarray((rgb.numpy() * 255).astype(np.uint8)).save(
@@ -626,12 +652,7 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             image_size=256, blur_radius=0.0, faces_per_pixel=1
         )
 
-        lights = PointLights(
-            device=device,
-            ambient_color=((1.0, 1.0, 1.0),),
-            diffuse_color=((0.0, 0.0, 0.0),),
-            specular_color=((0.0, 0.0, 0.0),),
-        )
+        lights = AmbientLights(device=device)
         blend_params = BlendParams(
             sigma=1e-1,
             gamma=1e-4,
@@ -652,6 +673,9 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
         verts_shifted2 = verts.clone()
         verts_shifted2 *= 0.5
         verts_shifted2[:, 1] -= 7
+        verts_shifted3 = verts.clone()
+        verts_shifted3 *= 0.5
+        verts_shifted3[:, 1] -= 700
 
         [faces] = plain_torus.faces_list()
         nocolor = torch.zeros((100, 100), device=device)
@@ -697,7 +721,11 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             mesh1 = Meshes(verts=[verts], faces=[faces], textures=textures1)
             mesh2 = Meshes(verts=[verts_shifted1], faces=[faces], textures=textures2)
             mesh3 = Meshes(verts=[verts_shifted2], faces=[faces], textures=textures3)
-            mesh = join_meshes_as_scene([mesh1, mesh2, mesh3])
+            # mesh4 is like mesh1 but outside the field of view. It is here to test
+            # that having another texture with the same map doesn't produce
+            # two copies in the joined map.
+            mesh4 = Meshes(verts=[verts_shifted3], faces=[faces], textures=textures1)
+            mesh = join_meshes_as_scene([mesh1, mesh2, mesh3, mesh4])
 
             output = renderer(mesh)[0, ..., :3].cpu()
             output1 = renderer(mesh1)[0, ..., :3].cpu()
@@ -773,12 +801,7 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             image_size=256, blur_radius=0.0, faces_per_pixel=1
         )
 
-        lights = PointLights(
-            device=device,
-            ambient_color=((1.0, 1.0, 1.0),),
-            diffuse_color=((0.0, 0.0, 0.0),),
-            specular_color=((0.0, 0.0, 0.0),),
-        )
+        lights = AmbientLights(device=device)
         blend_params = BlendParams(
             sigma=1e-1,
             gamma=1e-4,
@@ -856,12 +879,7 @@ class TestRenderMeshes(TestCaseMixin, unittest.TestCase):
             perspective_correct=False,
         )
 
-        lights = PointLights(
-            device=device,
-            ambient_color=((1.0, 1.0, 1.0),),
-            diffuse_color=((0.0, 0.0, 0.0),),
-            specular_color=((0.0, 0.0, 0.0),),
-        )
+        lights = AmbientLights(device=device)
         blend_params = BlendParams(
             sigma=1e-1,
             gamma=1e-4,

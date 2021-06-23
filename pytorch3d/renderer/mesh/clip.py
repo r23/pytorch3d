@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 from typing import Any, List, Optional, Tuple
 
@@ -372,7 +376,7 @@ def clip_faces(
         # (F) dim tensor containing the number of clipped vertices in each triangle
         faces_num_clipped_verts = faces_clipped_verts.sum(1)
     else:
-        faces_num_clipped_verts = torch.zeros([F, 3], device=device)
+        faces_num_clipped_verts = torch.zeros([F], device=device)
 
     # If no triangles need to be clipped or culled, avoid unnecessary computation
     # and return early
@@ -638,8 +642,11 @@ def convert_clipped_rasterization_to_original_faces(
     """
     faces_clipped_to_unclipped_idx = clipped_faces.faces_clipped_to_unclipped_idx
 
-    # If no clipping or culling then return inputs
-    if faces_clipped_to_unclipped_idx is None:
+    # If no clipping then return inputs
+    if (
+        faces_clipped_to_unclipped_idx is None
+        or faces_clipped_to_unclipped_idx.numel() == 0
+    ):
         return pix_to_face_clipped, bary_coords_clipped
 
     device = pix_to_face_clipped.device

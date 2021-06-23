@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 
 """This module implements utility functions for loading and saving meshes."""
@@ -11,6 +15,7 @@ from typing import List, Optional, Union
 import numpy as np
 import torch
 from iopath.common.file_io import PathManager
+from pytorch3d.common.types import Device
 from pytorch3d.io.mtl_io import load_mtl, make_mesh_texture_atlas
 from pytorch3d.io.utils import _check_faces_indices, _make_tensor, _open_file
 from pytorch3d.renderer import TexturesAtlas, TexturesUV
@@ -71,7 +76,7 @@ def load_obj(
     create_texture_atlas: bool = False,
     texture_atlas_size: int = 4,
     texture_wrap: Optional[str] = "repeat",
-    device="cpu",
+    device: Device = "cpu",
     path_manager: Optional[PathManager] = None,
 ):
     """
@@ -143,7 +148,7 @@ def load_obj(
             is ignored and a repeating pattern is formed.
             If `texture_mode="clamp"` the values are clamped to the range [0, 1].
             If None, then there is no transformation of the texture values.
-        device: string or torch.device on which to return the new tensors.
+        device: Device (as str or torch.device) on which to return the new tensors.
         path_manager: optionally a PathManager object to interpret paths.
 
     Returns:
@@ -207,11 +212,7 @@ def load_obj(
               None.
     """
     data_dir = "./"
-    # pyre-fixme[6]: Expected `Union[typing.Type[typing.Any],
-    #  typing.Tuple[typing.Type[typing.Any], ...]]` for 2nd param but got `Any`.
     if isinstance(f, (str, bytes, os.PathLike)):
-        # pyre-fixme[6]: Expected `_PathLike[Variable[typing.AnyStr <: [str,
-        #  bytes]]]` for 1st param but got `Union[_PathLike[typing.Any], bytes, str]`.
         data_dir = os.path.dirname(f)
     if path_manager is None:
         path_manager = PathManager()
@@ -230,7 +231,7 @@ def load_obj(
 
 def load_objs_as_meshes(
     files: list,
-    device=None,
+    device: Optional[Device] = None,
     load_textures: bool = True,
     create_texture_atlas: bool = False,
     texture_atlas_size: int = 4,
@@ -297,7 +298,7 @@ class MeshObjFormat(MeshFormatInterpreter):
         self,
         path: Union[str, Path],
         include_textures: bool,
-        device,
+        device: Device,
         path_manager: PathManager,
         create_texture_atlas: bool = False,
         texture_atlas_size: int = 4,
@@ -501,7 +502,7 @@ def _load_materials(
     *,
     data_dir: str,
     load_textures: bool,
-    device,
+    device: Device,
     path_manager: PathManager,
 ):
     """
@@ -512,7 +513,7 @@ def _load_materials(
         f: a file-like object of the material information.
         data_dir: the directory where the material texture files are located.
         load_textures: whether textures should be loaded.
-        device: string or torch.device on which to return the new tensors.
+        device: Device (as str or torch.device) on which to return the new tensors.
         path_manager: PathManager object to interpret paths.
 
     Returns:
@@ -550,7 +551,7 @@ def _load_obj(
     texture_atlas_size: int = 4,
     texture_wrap: Optional[str] = "repeat",
     path_manager: PathManager,
-    device="cpu",
+    device: Device = "cpu",
 ):
     """
     Load a mesh from a file-like object. See load_obj function more details.

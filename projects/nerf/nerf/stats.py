@@ -1,4 +1,9 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
 import time
 import warnings
 from itertools import cycle
@@ -11,7 +16,7 @@ from matplotlib import colors as mcolors
 from visdom import Visdom
 
 
-class AverageMeter(object):
+class AverageMeter:
     """
     Computes and stores the average and current value.
     Tracks the exact history of the added values in every epoch.
@@ -65,7 +70,7 @@ class AverageMeter(object):
         ]
 
 
-class Stats(object):
+class Stats:
     """
     Stats logging object useful for gathering statistics of training
     a deep network in PyTorch.

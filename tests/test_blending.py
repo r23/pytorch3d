@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 import unittest
 
@@ -184,8 +188,8 @@ class TestBlending(TestCaseMixin, unittest.TestCase):
             channel_color = blend_params.background_color[i]
             self.assertTrue(images[~is_foreground][..., i].eq(channel_color).all())
 
-        # Examine the alpha channel is correct
-        self.assertTrue(images[..., 3].eq(1).all())
+        # Examine the alpha channel
+        self.assertClose(images[..., 3], (pix_to_face[..., 0] >= 0).float())
 
     def test_sigmoid_alpha_blend_manual_gradients(self):
         # Create dummy outputs of rasterization

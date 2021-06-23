@@ -1,4 +1,9 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
 from typing import Optional
 
 import numpy as np
@@ -14,7 +19,7 @@ def texturesuv_image_matplotlib(
     color=(1.0, 0.0, 0.0),
     subsample: Optional[int] = 10000,
     origin: str = "upper",
-):
+):  # pragma: no cover
     """
     Plot the texture image for one element of a TexturesUV with
     matplotlib together with verts_uvs positions circled.
@@ -61,7 +66,7 @@ def texturesuv_image_PIL(
     radius: float = 1,
     color="red",
     subsample: Optional[int] = 10000,
-):
+):  # pragma: no cover
     """
     Return a PIL image of the texture image of one element of the batch
     from a TexturesUV, together with the verts_uvs positions circled.

@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 import itertools
 import struct
@@ -352,6 +356,11 @@ class TestMeshPlyIO(TestCaseMixin, unittest.TestCase):
         file = BytesIO()
         save_ply(file, verts=verts, faces=faces, verts_normals=normals)
         file.close()
+
+    def test_contiguity_unimportant(self):
+        verts = torch.rand(32, 3)
+        self._test_save_load(verts, torch.randint(30, size=(10, 3)))
+        self._test_save_load(verts, torch.randint(30, size=(3, 10)).T)
 
     def test_empty_save_load(self):
         # Vertices + empty faces

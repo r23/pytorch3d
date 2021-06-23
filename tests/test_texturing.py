@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 
 import unittest
@@ -12,7 +16,11 @@ from pytorch3d.renderer.mesh.textures import (
     TexturesUV,
     TexturesVertex,
     _list_to_padded_wrapper,
+)
+from pytorch3d.renderer.mesh.utils import (
+    Rectangle,
     pack_rectangles,
+    pack_unique_rectangles,
 )
 from pytorch3d.structures import Meshes, list_to_packed, packed_to_list
 from test_meshes import init_mesh
@@ -247,7 +255,7 @@ class TestTexturesVertex(TestCaseMixin, unittest.TestCase):
     def test_getitem(self):
         N = 5
         V = 20
-        source = {"verts_features": torch.randn(size=(N, 10, 128))}
+        source = {"verts_features": torch.randn(size=(N, V, 128))}
         tex = TexturesVertex(verts_features=source["verts_features"])
 
         verts = torch.rand(size=(N, V, 3))
@@ -263,6 +271,30 @@ class TestTexturesVertex(TestCaseMixin, unittest.TestCase):
         index = torch.tensor([1, 2], dtype=torch.int64)
         tryindex(self, index, tex, meshes, source)
         tryindex(self, [2, 4], tex, meshes, source)
+
+    def test_sample_textures_error(self):
+        N = 5
+        V = 20
+        verts = torch.rand(size=(N, V, 3))
+        faces = torch.randint(size=(N, 10, 3), high=V)
+        tex = TexturesVertex(verts_features=torch.randn(size=(N, 10, 128)))
+
+        # Verts features have the wrong number of verts
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            Meshes(verts=verts, faces=faces, textures=tex)
+
+        # Verts features have the wrong batch dim
+        tex = TexturesVertex(verts_features=torch.randn(size=(1, V, 128)))
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            Meshes(verts=verts, faces=faces, textures=tex)
+
+        meshes = Meshes(verts=verts, faces=faces)
+        meshes.textures = tex
+
+        # Cannot use the texture attribute set on meshes for sampling
+        # textures if the dimensions don't match
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            meshes.sample_textures(None)
 
 
 class TestTexturesAtlas(TestCaseMixin, unittest.TestCase):
@@ -452,11 +484,12 @@ class TestTexturesAtlas(TestCaseMixin, unittest.TestCase):
     def test_getitem(self):
         N = 5
         V = 20
-        source = {"atlas": torch.randn(size=(N, 10, 4, 4, 3))}
+        F = 10
+        source = {"atlas": torch.randn(size=(N, F, 4, 4, 3))}
         tex = TexturesAtlas(atlas=source["atlas"])
 
         verts = torch.rand(size=(N, V, 3))
-        faces = torch.randint(size=(N, 10, 3), high=V)
+        faces = torch.randint(size=(N, F, 3), high=V)
         meshes = Meshes(verts=verts, faces=faces, textures=tex)
 
         tryindex(self, 2, tex, meshes, source)
@@ -468,6 +501,32 @@ class TestTexturesAtlas(TestCaseMixin, unittest.TestCase):
         index = torch.tensor([1, 2], dtype=torch.int64)
         tryindex(self, index, tex, meshes, source)
         tryindex(self, [2, 4], tex, meshes, source)
+
+    def test_sample_textures_error(self):
+        N = 1
+        V = 20
+        F = 10
+        verts = torch.rand(size=(5, V, 3))
+        faces = torch.randint(size=(5, F, 3), high=V)
+        meshes = Meshes(verts=verts, faces=faces)
+
+        # TexturesAtlas have the wrong batch dim
+        tex = TexturesAtlas(atlas=torch.randn(size=(1, F, 4, 4, 3)))
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            Meshes(verts=verts, faces=faces, textures=tex)
+
+        # TexturesAtlas have the wrong number of faces
+        tex = TexturesAtlas(atlas=torch.randn(size=(N, 15, 4, 4, 3)))
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            Meshes(verts=verts, faces=faces, textures=tex)
+
+        meshes = Meshes(verts=verts, faces=faces)
+        meshes.textures = tex
+
+        # Cannot use the texture attribute set on meshes for sampling
+        # textures if the dimensions don't match
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            meshes.sample_textures(None)
 
 
 class TestTexturesUV(TestCaseMixin, unittest.TestCase):
@@ -820,9 +879,10 @@ class TestTexturesUV(TestCaseMixin, unittest.TestCase):
     def test_getitem(self):
         N = 5
         V = 20
+        F = 10
         source = {
             "maps": torch.rand(size=(N, 1, 1, 3)),
-            "faces_uvs": torch.randint(size=(N, 10, 3), high=V),
+            "faces_uvs": torch.randint(size=(N, F, 3), high=V),
             "verts_uvs": torch.randn(size=(N, V, 2)),
         }
         tex = TexturesUV(
@@ -832,7 +892,7 @@ class TestTexturesUV(TestCaseMixin, unittest.TestCase):
         )
 
         verts = torch.rand(size=(N, V, 3))
-        faces = torch.randint(size=(N, 10, 3), high=V)
+        faces = torch.randint(size=(N, F, 3), high=V)
         meshes = Meshes(verts=verts, faces=faces, textures=tex)
 
         tryindex(self, 2, tex, meshes, source)
@@ -854,6 +914,46 @@ class TestTexturesUV(TestCaseMixin, unittest.TestCase):
         expected = torch.FloatTensor([[32, 224], [64, 96], [64, 128]])
         self.assertClose(tex.centers_for_image(0), expected)
 
+    def test_sample_textures_error(self):
+        N = 1
+        V = 20
+        F = 10
+        maps = torch.rand(size=(N, 1, 1, 3))
+        verts_uvs = torch.randn(size=(N, V, 2))
+        tex = TexturesUV(
+            maps=maps,
+            faces_uvs=torch.randint(size=(N, 15, 3), high=V),
+            verts_uvs=verts_uvs,
+        )
+        verts = torch.rand(size=(5, V, 3))
+        faces = torch.randint(size=(5, 10, 3), high=V)
+        meshes = Meshes(verts=verts, faces=faces)
+
+        # Wrong number of faces
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            Meshes(verts=verts, faces=faces, textures=tex)
+
+        # Wrong batch dim for faces
+        tex = TexturesUV(
+            maps=maps,
+            faces_uvs=torch.randint(size=(1, F, 3), high=V),
+            verts_uvs=verts_uvs,
+        )
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            Meshes(verts=verts, faces=faces, textures=tex)
+
+        # Wrong batch dim for verts_uvs is not necessary to check as
+        # there is already a check inside TexturesUV for a batch dim
+        # mismatch with faces_uvs
+
+        meshes = Meshes(verts=verts, faces=faces)
+        meshes.textures = tex
+
+        # Cannot use the texture attribute set on meshes for sampling
+        # textures if the dimensions don't match
+        with self.assertRaisesRegex(ValueError, "do not match the dimensions"):
+            meshes.sample_textures(None)
+
 
 class TestRectanglePacking(TestCaseMixin, unittest.TestCase):
     def setUp(self) -> None:
@@ -873,21 +973,24 @@ class TestRectanglePacking(TestCaseMixin, unittest.TestCase):
         mask = torch.zeros(total, dtype=torch.bool)
         seen_x_bound = False
         seen_y_bound = False
-        for (in_x, in_y), loc in zip(sizes, res.locations):
-            self.assertGreaterEqual(loc[0], 0)
-            self.assertGreaterEqual(loc[1], 0)
-            placed_x, placed_y = (in_y, in_x) if loc[2] else (in_x, in_y)
-            upper_x = placed_x + loc[0]
-            upper_y = placed_y + loc[1]
+        for (in_x, in_y), (out_x, out_y, flipped, is_first) in zip(
+            sizes, res.locations
+        ):
+            self.assertTrue(is_first)
+            self.assertGreaterEqual(out_x, 0)
+            self.assertGreaterEqual(out_y, 0)
+            placed_x, placed_y = (in_y, in_x) if flipped else (in_x, in_y)
+            upper_x = placed_x + out_x
+            upper_y = placed_y + out_y
             self.assertGreaterEqual(total[0], upper_x)
             if total[0] == upper_x:
                 seen_x_bound = True
             self.assertGreaterEqual(total[1], upper_y)
             if total[1] == upper_y:
                 seen_y_bound = True
-            already_taken = torch.sum(mask[loc[0] : upper_x, loc[1] : upper_y])
+            already_taken = torch.sum(mask[out_x:upper_x, out_y:upper_y])
             self.assertEqual(already_taken, 0)
-            mask[loc[0] : upper_x, loc[1] : upper_y] = 1
+            mask[out_x:upper_x, out_y:upper_y] = 1
         self.assertTrue(seen_x_bound)
         self.assertTrue(seen_y_bound)
 
@@ -930,3 +1033,29 @@ class TestRectanglePacking(TestCaseMixin, unittest.TestCase):
             for j in range(vals.shape[0]):
                 sizes.append((int(vals[j, 0]), int(vals[j, 1])))
             self.wrap_pack(sizes)
+
+    def test_all_identical(self):
+        sizes = [Rectangle(xsize=61, ysize=82, identifier=1729)] * 3
+        total_size, locations = pack_unique_rectangles(sizes)
+        self.assertEqual(total_size, (61, 82))
+        self.assertEqual(len(locations), 3)
+        for i, (x, y, is_flipped, is_first) in enumerate(locations):
+            self.assertEqual(x, 0)
+            self.assertEqual(y, 0)
+            self.assertFalse(is_flipped)
+            self.assertEqual(is_first, i == 0)
+
+    def test_one_different_id(self):
+        sizes = [Rectangle(xsize=61, ysize=82, identifier=220)] * 3
+        sizes.extend([Rectangle(xsize=61, ysize=82, identifier=284)] * 3)
+        total_size, locations = pack_unique_rectangles(sizes)
+        self.assertEqual(total_size, (82, 122))
+        self.assertEqual(len(locations), 6)
+        for i, (x, y, is_flipped, is_first) in enumerate(locations):
+            self.assertTrue(is_flipped)
+            self.assertEqual(is_first, i % 3 == 0)
+            self.assertEqual(x, 0)
+            if i < 3:
+                self.assertEqual(y, 61)
+            else:
+                self.assertEqual(y, 0)

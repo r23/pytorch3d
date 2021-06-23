@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 """
 This script is adapted from the torchvision one.
@@ -21,6 +25,9 @@ CONDA_CUDA_VERSIONS = {
     "1.6.0": ["cu92", "cu101", "cu102"],
     "1.7.0": ["cu101", "cu102", "cu110"],
     "1.7.1": ["cu101", "cu102", "cu110"],
+    "1.8.0": ["cu101", "cu102", "cu111"],
+    "1.8.1": ["cu101", "cu102", "cu111"],
+    "1.9.0": ["cu102", "cu111"],
 }
 
 

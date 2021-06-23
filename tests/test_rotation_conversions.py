@@ -1,10 +1,16 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 
 import itertools
 import math
 import unittest
+from typing import Optional, Union
 
+import numpy as np
 import torch
 from common_testing import TestCaseMixin
 from pytorch3d.transforms.rotation_conversions import (
@@ -64,7 +70,7 @@ class TestRotationConversion(TestCaseMixin, unittest.TestCase):
         """quat -> mtx -> quat"""
         data = random_quaternions(13, dtype=torch.float64)
         mdata = matrix_to_quaternion(quaternion_to_matrix(data))
-        self.assertClose(data, mdata)
+        self._assert_quaternions_close(data, mdata)
 
     def test_to_quat(self):
         """mtx -> quat -> mtx"""
@@ -74,7 +80,8 @@ class TestRotationConversion(TestCaseMixin, unittest.TestCase):
 
     def test_quat_grad_exists(self):
         """Quaternion calculations are differentiable."""
-        rotation = random_rotation(requires_grad=True)
+        rotation = random_rotation()
+        rotation.requires_grad = True
         modified = quaternion_to_matrix(matrix_to_quaternion(rotation))
         [g] = torch.autograd.grad(modified.sum(), rotation)
         self.assertTrue(torch.isfinite(g).all())
@@ -129,7 +136,8 @@ class TestRotationConversion(TestCaseMixin, unittest.TestCase):
 
     def test_euler_grad_exists(self):
         """Euler angle calculations are differentiable."""
-        rotation = random_rotation(dtype=torch.float64, requires_grad=True)
+        rotation = random_rotation(dtype=torch.float64)
+        rotation.requires_grad = True
         for convention in self._all_euler_angle_conventions():
             euler_angles = matrix_to_euler_angles(rotation, convention)
             mdata = euler_angles_to_matrix(euler_angles, convention)
@@ -146,8 +154,7 @@ class TestRotationConversion(TestCaseMixin, unittest.TestCase):
         b_matrix = quaternion_to_matrix(b)
         ab_matrix = torch.matmul(a_matrix, b_matrix)
         ab_from_matrix = matrix_to_quaternion(ab_matrix)
-        self.assertEqual(ab.shape, ab_from_matrix.shape)
-        self.assertClose(ab, ab_from_matrix)
+        self._assert_quaternions_close(ab, ab_from_matrix)
 
     def test_matrix_to_quaternion_corner_case(self):
         """Check no bad gradients from sqrt(0)."""
@@ -161,7 +168,34 @@ class TestRotationConversion(TestCaseMixin, unittest.TestCase):
         loss.backward()
         optimizer.step()
 
-        self.assertClose(matrix, 0.95 * torch.eye(3))
+        self.assertClose(matrix, matrix, msg="Result has non-finite values")
+        delta = 1e-2
+        self.assertLess(
+            matrix.trace(),
+            3.0 - delta,
+            msg="Identity initialisation unchanged by a gradient step",
+        )
+
+    def test_matrix_to_quaternion_by_pi(self):
+        # We check that rotations by pi around each of the 26
+        # nonzero vectors containing nothing but 0, 1 and -1
+        # are mapped to the right quaternions.
+        # This is representative across the directions.
+        options = [0.0, -1.0, 1.0]
+        axes = [
+            torch.tensor(vec)
+            for vec in itertools.islice(  # exclude [0, 0, 0]
+                itertools.product(options, options, options), 1, None
+            )
+        ]
+
+        axes = torch.nn.functional.normalize(torch.stack(axes), dim=-1)
+        # Rotation by pi around unit vector x is given by
+        # the matrix 2 x x^T - Id.
+        R = 2 * torch.matmul(axes[..., None], axes[..., None, :]) - torch.eye(3)
+        quats_hat = matrix_to_quaternion(R)
+        R_hat = quaternion_to_matrix(quats_hat)
+        self.assertClose(R, R_hat, atol=1e-3)
 
     def test_from_axis_angle(self):
         """axis_angle -> mtx -> axis_angle"""
@@ -190,7 +224,8 @@ class TestRotationConversion(TestCaseMixin, unittest.TestCase):
 
     def test_quaternion_application(self):
         """Applying a quaternion is the same as applying the matrix."""
-        quaternions = random_quaternions(3, torch.float64, requires_grad=True)
+        quaternions = random_quaternions(3, torch.float64)
+        quaternions.requires_grad = True
         matrices = quaternion_to_matrix(quaternions)
         points = torch.randn(3, 3, dtype=torch.float64, requires_grad=True)
         transform1 = quaternion_apply(quaternions, points)
@@ -227,4 +262,21 @@ class TestRotationConversion(TestCaseMixin, unittest.TestCase):
         r = rotation_6d_to_matrix(r6d)
         self.assertClose(
             torch.matmul(r, r.permute(0, 2, 1)), torch.eye(3).expand_as(r), atol=1e-6
+        )
+
+    def _assert_quaternions_close(
+        self,
+        input: Union[torch.Tensor, np.ndarray],
+        other: Union[torch.Tensor, np.ndarray],
+        *,
+        rtol: float = 1e-05,
+        atol: float = 1e-08,
+        equal_nan: bool = False,
+        msg: Optional[str] = None,
+    ):
+        self.assertEqual(np.shape(input), np.shape(other))
+        dot = (input * other).sum(-1)
+        ones = torch.ones_like(dot)
+        self.assertClose(
+            dot.abs(), ones, rtol=rtol, atol=atol, equal_nan=equal_nan, msg=msg
         )

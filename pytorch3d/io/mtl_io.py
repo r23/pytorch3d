@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 """This module implements utility functions for loading .mtl files and textures."""
 import os
@@ -9,6 +13,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from iopath.common.file_io import PathManager
+from pytorch3d.common.types import Device
 from pytorch3d.io.utils import _open_file, _read_image
 
 
@@ -393,7 +398,7 @@ TextureImages = Dict[str, torch.Tensor]
 
 
 def _parse_mtl(
-    f, path_manager: PathManager, device="cpu"
+    f, path_manager: PathManager, device: Device = "cpu"
 ) -> Tuple[MaterialProperties, TextureFiles]:
     material_properties = {}
     texture_files = {}
@@ -474,7 +479,7 @@ def load_mtl(
     *,
     material_names: List[str],
     data_dir: str,
-    device="cpu",
+    device: Device = "cpu",
     path_manager: PathManager,
 ) -> Tuple[MaterialProperties, TextureImages]:
     """
@@ -485,6 +490,7 @@ def load_mtl(
         f: a file-like object of the material information.
         material_names: a list of the material names found in the .obj file.
         data_dir: the directory where the material texture files are located.
+        device: Device (as str or torch.tensor) on which to return the new tensors.
         path_manager: PathManager for interpreting both f and material_names.
 
     Returns:

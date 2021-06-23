@@ -1,5 +1,7 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
-# This source code is licensed under the license found in the
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
 
@@ -8,6 +10,7 @@ from pathlib import Path
 from typing import Deque, Optional, Union
 
 from iopath.common.file_io import PathManager
+from pytorch3d.common.types import Device
 from pytorch3d.structures import Meshes, Pointclouds
 
 from .obj_io import MeshObjFormat
@@ -86,6 +89,8 @@ class IO:
             interpreter: the new interpreter to use, which must be an instance
                 of a class which inherits MeshFormatInterpreter.
         """
+        if not isinstance(interpreter, MeshFormatInterpreter):
+            raise ValueError("Invalid interpreter")
         self.mesh_interpreters.appendleft(interpreter)
 
     def register_pointcloud_format(
@@ -98,13 +103,15 @@ class IO:
             interpreter: the new interpreter to use, which must be an instance
                 of a class which inherits PointcloudFormatInterpreter.
         """
+        if not isinstance(interpreter, PointcloudFormatInterpreter):
+            raise ValueError("Invalid interpreter")
         self.pointcloud_interpreters.appendleft(interpreter)
 
     def load_mesh(
         self,
         path: Union[str, Path],
         include_textures: bool = True,
-        device="cpu",
+        device: Device = "cpu",
         **kwargs,
     ) -> Meshes:
         """
@@ -164,14 +171,14 @@ class IO:
         raise ValueError(f"No mesh interpreter found to write to {path}.")
 
     def load_pointcloud(
-        self, path: Union[str, Path], device="cpu", **kwargs
+        self, path: Union[str, Path], device: Device = "cpu", **kwargs
     ) -> Pointclouds:
         """
         Attempt to load a point cloud from the given file, using a registered format.
 
         Args:
             path: file to read
-            device: torch.device on which to load the data.
+            device: Device (as str or torch.device) on which to load the data.
 
         Returns:
             new Pointclouds object containing one mesh.

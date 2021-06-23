@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 import itertools
 import random
@@ -632,6 +636,33 @@ class TestPointclouds(TestCaseMixin, unittest.TestCase):
 
         with self.assertRaises(ValueError):
             clouds.extend(N=-1)
+
+    def test_to(self):
+        cloud = self.init_cloud(5, 100, 10)  # Using device "cuda:0"
+
+        cuda_device = torch.device("cuda:0")
+
+        converted_cloud = cloud.to("cuda:0")
+        self.assertEqual(cuda_device, converted_cloud.device)
+        self.assertEqual(cuda_device, cloud.device)
+        self.assertIs(cloud, converted_cloud)
+
+        converted_cloud = cloud.to(cuda_device)
+        self.assertEqual(cuda_device, converted_cloud.device)
+        self.assertEqual(cuda_device, cloud.device)
+        self.assertIs(cloud, converted_cloud)
+
+        cpu_device = torch.device("cpu")
+
+        converted_cloud = cloud.to("cpu")
+        self.assertEqual(cpu_device, converted_cloud.device)
+        self.assertEqual(cuda_device, cloud.device)
+        self.assertIsNot(cloud, converted_cloud)
+
+        converted_cloud = cloud.to(cpu_device)
+        self.assertEqual(cpu_device, converted_cloud.device)
+        self.assertEqual(cuda_device, cloud.device)
+        self.assertIsNot(cloud, converted_cloud)
 
     def test_to_list(self):
         cloud = self.init_cloud(5, 100, 10)

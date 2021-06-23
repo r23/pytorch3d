@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 
 """
@@ -142,7 +146,7 @@ def sample_points_from_meshes(
 
 
 def _rand_barycentric_coords(
-    size1, size2, dtype, device
+    size1, size2, dtype: torch.dtype, device: torch.device
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Helper function to generate random barycentric coordinates which are uniformly

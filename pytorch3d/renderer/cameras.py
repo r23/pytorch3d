@@ -1,4 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 import math
 import warnings
@@ -7,6 +11,7 @@ from typing import Optional, Sequence, Tuple
 import numpy as np
 import torch
 import torch.nn.functional as F
+from pytorch3d.common.types import Device
 from pytorch3d.transforms import Rotate, Transform3d, Translate
 
 from .utils import TensorProperties, convert_to_tensors_and_broadcast
@@ -38,7 +43,8 @@ class CamerasBase(TensorProperties):
     - Screen coordinate system: This is another representation of the view volume with
         the XY coordinates defined in pixel space instead of a normalized space.
 
-    A better illustration of the coordinate systems can be found in pytorch3d/docs/notes/cameras.md.
+    A better illustration of the coordinate systems can be found in
+    pytorch3d/docs/notes/cameras.md.
 
     It defines methods that are common to all camera models:
         - `get_camera_center` that returns the optical center of the camera in
@@ -289,7 +295,7 @@ def OpenGLPerspectiveCameras(
     degrees: bool = True,
     R=_R,
     T=_T,
-    device="cpu",
+    device: Device = "cpu",
 ):
     """
     OpenGLPerspectiveCameras has been DEPRECATED. Use FoVPerspectiveCameras instead.
@@ -357,7 +363,7 @@ class FoVPerspectiveCameras(CamerasBase):
         R=_R,
         T=_T,
         K=None,
-        device="cpu",
+        device: Device = "cpu",
     ):
         """
 
@@ -372,7 +378,7 @@ class FoVPerspectiveCameras(CamerasBase):
             T: Translation matrix of shape (N, 3)
             K: (optional) A calibration matrix of shape (N, 4, 4)
                 If provided, don't need znear, zfar, fov, aspect_ratio, degrees
-            device: torch.device or string
+            device: Device (as str or torch.device)
         """
         # The initializer formats all inputs to torch tensors and broadcasts
         # all the inputs to have the same batch dimension where necessary.
@@ -1359,7 +1365,7 @@ def look_at_view_transform(
             the camera is projected onto a horizontal plane y = 0.
             azim is the angle between the projected vector and a
             reference vector at (0, 0, 1) on the reference plane (the horizontal plane).
-        dist, elem and azim can be of shape (1), (N).
+        dist, elev and azim can be of shape (1), (N).
         degrees: boolean flag to indicate if the elevation and azimuth
             angles are specified in degrees or radians.
         eye: the position of the camera(s) in world coordinates. If eye is not
